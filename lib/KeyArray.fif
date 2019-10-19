@@ -1,0 +1,579 @@
+//
+// Array of keys uint 256 with number of keys in 0..100
+//
+// Dictionary:
+//
+//      key[]   = create empty array of keys with 'keyn' max number of elements
+//      key#@   = @ max key number in the array and store it in 'pubkn' constant
+//      key[]>  = print out the array
+//      key#    = return number of key in the array
+//      key,    = insert key in array in given index
+//      key&    = append key to the aray
+//      key@    = @ key from array for given index
+//      key@+   = @ key from array for given index and keep array in the stack
+//      key?    = find the key in the array
+//      key?+   = find the key in the array and keep array in the stack
+//      B>u     = BYTE {0..256} to uint256 converter 
+// TVM
+//      KEY@    = key@
+//      
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+//
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+
+// deafult key array length
+100 constant pubkn
+
+// create empty array of keys with 'keyn' max number of elements
+// ( keyn -- keyarray }
+{
+    dup =: pubkn <b swap 16 u, 0 16 u, b>
+} : key[]
+
+// @ max key number in the array and store it in 'pubkn' constant
+// ( keyarray -- keyarray )
+{
+    dup <s 16 u@ =: pubkn
+} : key#@
+
+// print out array
+// ( keyarray -- keyarray )
+{
+    dup <s csr.
+} : key[]>
+
+// return number of key in the array
+// ( keyarray -- keyarray, keynum  )
+{
+    dup <s 16 u@+ swap drop 16 u@
+} : key#
+
+// ( index -- -1 path[0] ... path[k] ) 0 < pubkn <= 100 and 0<= k <= 3 
+{ -1 swap @' pubkn 2dup >= abort"-index2path: Invalid index" 
+    { 2dup < 
+        { 0 -rot 4 / } 
+        { rot dup 3 = 
+            { -rot - + 1+ 0 0 }  
+            { 1+ -rot 2dup - rot drop swap } cond 
+        } cond
+        dup 0= 
+    } until
+    2dup > 
+    { rot 2 pick + -rot } if
+    2drop 
+} : -index2path
+
+// ( index -- -1, path[k...0] ) 0 < pubkn <= 100 and 0<= k <= 3 
+{ -index2path
+    dup 0>= 
+    { over 0>= 
+        { 2 pick 0>= 
+            { 3 pick 0>= 
+                { 3 exch 2 1 exch2 } 
+                { 2 exch } cond 
+            } 
+            { swap } cond 
+        } if 
+    } if 
+} : index2path
+
+// ( -1, path[k...0] -- -1, path[k...0], -1, path[0...k], k+1 ) 0 < pubkn <= 100 and 0<= k <= 3 
+{ dup 0>= 
+    { over 0>= 
+        { 2 pick 0>= 
+           { 3 pick 0>=
+                { -1 over 3 pick 5 pick 7 pick 4 }
+                { -1 over 3 pick 5 pick 3 } cond
+           }
+           { -1 over 3 pick 2 } cond
+        }
+        { -1 over 1 } cond
+    } 
+    { 0 } cond
+} : overPath
+
+// ( -1 path[k] ... path[0] --  path[k] ... path[0] k+1 ) 0 < pubkn <= 100 and 0<= k <= 3 
+{ dup 0>= 
+    { over 0>= 
+        { 2 pick 0>= 
+           { 3 pick 0>=
+                { 4 }
+                { 3 } cond
+           }
+           { 2 } cond
+        }
+        { 1 } cond
+    } 
+    { 0 } cond
+} : pathLen
+
+// ( pc, cc, i -- pc' ) pc'.ref[ i ] = ref( cc )
+{ rot <b swap <s rot
+    dup 0> { { -rot ref@+ rot swap ref, swap rot 1- dup 0= } until } if
+    drop ref@+ drop
+    swap rot ref,
+    swap s, b>
+} : updateRef
+
+// ( pc, i -- pc', cc ) ref( cc ) == pc'.ref[ i ] if pc.ref[ i ] == null then cc = <b b>
+{ swap <s <b rot 
+    dup 0> { { swap rot ref@?+ 0= { <b b> } if rot swap ref, rot 1- dup 0= } until } if
+    drop swap ref@?+
+    0= { <b b> } if
+    rot over ref,
+    rot s, b>
+    swap
+} : getRef
+
+// ( cc, key, i -- cc' )
+{
+    dup 3 > { 4 - } if 
+    dup 3 >= abort"insertKey: invalid index" 
+    rot                 // key, i, cc 
+    <s                  // key, i, scc
+    swap 256 * swap     // key, i*256 := offset, scc
+    dup sbits           // key, offset, scc, sbits
+    dup 256 mod         // key, offset, scc, sbits, sbits mod 256
+    32 =                // key, offset, scc, sbits, ?
+    {
+        rot             // key, scc, sbits, offset
+        32 +            // key, scc, sbits, offset + 32
+        -rot            // key, offset', scc, sbits
+    } if
+    rot                 // key, scc, sbits, offset
+    swap                // key, scc, offset, sbits
+    over                // key, scc, offset, sbits, offset
+    -                   // key, scc, offset, sbits - offset
+    dup 0=              
+    {  2drop            // ( add key to the end )
+        <b              // key, scc, b
+        swap            // key, b, scc
+        s,              // key, b'
+        swap            // b', key
+        256 u,          // b"
+        b>              // cc'
+        0               // cc', 0
+    } if
+    dup 0>
+    {                   // ( insert in the middle )
+        <b              // key, scc, offset, sbits - offset, b
+        3 roll          // key, offset, sbits - offset, b, scc
+        3 pick          // key, offset, sbits - offset, b, scc, offset
+        8 /             // key, offset, sbits - offset, b, scc, offset / 8
+        B@+             // key, offset, sbits - offset, b, B, scc'
+        rot             // key, offset, sbits - offset, B, scc', b
+        rot             // key, offset, sbits - offset, scc', b, B
+        B,              // key, offset, sbits - offset, scc', b'
+        4 roll          // offset, sbits - offset, scc', b', key
+        256 u,          // offset, sbits - offset, scc', b"
+        3 roll          // sbits - offset, scc', b", offset
+        3 roll          // scc', b", offset, sbits - offset
+        swap            // scc', b", sbits - offset, offset
+        drop 256        // scc', b", sbits - offset, 256
+        -               // scc', b", sbits - offset - 256
+        dup 0> 
+        {
+            rot         // b", sbits - offset - 256, scc'
+            32          // b", sbits - offset - 256, scc', 32
+            B@+         // b", sbits - offset - 256, B', scc"
+            swap        // b", sbits - offset - 256, scc", B'
+            drop        // b", sbits - offset - 256, scc"
+            swap        // b", scc", sbits - offset - 256
+            drop        // b", scc"
+            s,          // b"'
+            b>          // cc'
+        } 
+        {
+            drop        // scc', b"
+            swap        // b", scc'
+            s,          // b"'
+            b>          // cc'
+        } cond
+        1               // cc', 1
+    } if
+    dup 0<
+    {                   // ( add padding and add to the end )
+        negate          // key, scc, offset, offset - sbits
+        <b              // key, scc, offset, offset - sbits, b
+        3 roll          // key, offset, offset - sbits, b, scc
+        s,              // key, offset, offset - sbits, b'
+        swap            // key, offset, b', offset - sbits
+        0 swap          // key, offset, b', 0, offset - sbits
+        u,              // key, offset, b"
+        rot             // offset, b", key
+        256 u,          // offset, b"'
+        swap drop       // b"'
+        b>              // cc'
+        -1              // cc', -1
+    } if
+    // drop selector
+    drop                // cc'
+} : insertKey
+
+// ( root, key, -1, p[0], p[1], p[2], p[3], -1, p[3], p[2], p[1], p[0], 4 -- root" )
+{
+    drop 11             // root, key, -1, p[0], p[1], p[2], p[3], -1, p[3], p[2], p[1], p[0], 11
+    roll swap           // key, -1, p[0], p[1], p[2], p[3], -1, p[3], p[2], p[1], root, p[0]
+    getRef              // key, -1, p[0], p[1], p[2], p[3], -1, p[3], p[2], p[1], root', c0
+    rot                 // key, -1, p[0], p[1], p[2], p[3], -1, p[3], p[2], root', c0, p[1]
+    getRef              // key, -1, p[0], p[1], p[2], p[3], -1, p[3], p[2], root', c0', c1
+    3 roll              // key, -1, p[0], p[1], p[2], p[3], -1, p[3], root', c0', c1, p[2]
+    getRef              // key, -1, p[0], p[1], p[2], p[3], -1, p[3], root', c0', c1', c2
+    4 roll              // key, -1, p[0], p[1], p[2], p[3], -1, root', c0', c1', c2, p[3]
+    5 roll drop         // key, -1, p[0], p[1], p[2], p[3], root', c0', c1', c2, p[3]
+    10 roll swap        // -1, p[0], p[1], p[2], p[3], root', c0', c1', c2, key, p[3]
+    insertKey           // -1, p[0], p[1], p[2], p[3], root', c0', c1', c2'
+    4 roll              // -1, p[0], p[1], p[2], root', c0', c1', c2', p[3]
+    drop                // -1, p[0], p[1], p[2], root', c0', c1', c2'
+    4 roll              // -1, p[0], p[1], root', c0', c1', c2', p[2]
+    updateRef           // -1, p[0], p[1], root', c0', c1"
+    3 roll              // -1, p[0], root', c0', c1", p[1]
+    updateRef           // -1, p[0], root', c0"
+    rot                 // -1, root', c0", p[0]
+    updateRef           // -1, root"
+    swap drop           // root"
+} : inserPath4
+
+// ( root, key, -1, p[0], p[1], p[2], -1, p[2], p[1], p[0], 3 -- root" )
+{
+    drop 9              // root, key, -1, p[0], p[1], p[2], -1, p[2], p[1], p[0], 9
+    roll swap           // key, -1, p[0], p[1], p[2], -1, p[2], p[1], root, p[0]
+    getRef              // key, -1, p[0], p[1], p[2], -1, p[2], p[1], root', c0
+    rot                 // key, -1, p[0], p[1], p[2], -1, p[2], root', c0, p[1]
+    getRef              // key, -1, p[0], p[1], p[2], -1, p[2], root', c0', c1
+    3 roll              // key, -1, p[0], p[1], p[2], -1, root', c0', c1, p[2]
+    4 roll drop         // key, -1, p[0], p[1], p[2], root', c0', c1, p[2]
+    8 roll swap         // -1, p[0], p[1], p[2], root', c0', c1', key, p[2]
+    insertKey           // -1, p[0], p[1], p[2], root', c0', c1'
+    3 roll              // -1, p[0], p[1], root', c0', c1', p[2]
+    drop                // -1, p[0], p[1], root', c0', c1'
+    3 roll              // -1, p[0], root', c0', c1', p[1]
+    updateRef           // -1, p[0], root', c0"
+    rot                 // -1, root', c0", p[0]
+    updateRef           // -1, root"
+    swap drop           // root"
+} : inserPath3
+
+// ( root, key, -1, p[0], p[1], -1, p[1], p[0], 2 -- root" )
+{
+    drop 7              // root, key, -1, p[0], p[1], -1, p[1], p[0], 7
+    roll swap           // key, -1, p[0], p[1], -1, p[1], root, p[0]
+    getRef              // key, -1, p[0], p[1], -1, p[1], root', c0
+    rot                 // key, -1, p[0], p[1], -1, root', c0, p[1]
+    3 roll drop         // key, -1, p[0], p[1], root', c0, p[1]
+    6 roll              // -1, p[0], p[1], root', c0, p[1], key
+    swap                // -1, p[0], p[1], root', c0, key, p[1]
+    insertKey           // -1, p[0], p[1], root', c0'
+    rot drop            // -1, p[0], root', c0'
+    rot                 // -1, root', c0', p[0]
+    updateRef           // -1, root"
+    swap drop           // root"
+} : inserPath2
+
+// ( root, key, -1, p[0], -1, p[0], 1 -- root' )
+{
+    drop                // root, key, -1, p[0]
+    2drop               // root, key, -1, p[0]
+    swap drop           // root, key, p[0]
+    insertKey           // root'
+} : inserPath1
+
+
+// inc number of keys
+// ( keyarray -- keyarray' )
+{
+    <s
+    <b swap         // b, cs 
+    16 u@+          // b', maxkeynum, cs
+    -rot            // cs, b, u
+    16 u,           // cs, b'
+    swap            // b', cs
+    16 u@+          // b', cs, keynum
+    -rot            // cs, b, u
+    1+              // b', cs, keynum + 1
+    16 u,           // cs, b'
+    swap            // b', cs
+    s,              // b"
+    b>              // keyarray'
+} : key+
+
+// insert key in array in given index 
+// ( root, key, i -- root" )
+{
+    -index2path 
+    overPath
+    dup 4 = { inserPath4 4 } if
+    dup 3 = { inserPath3 3 } if
+    dup 2 = { inserPath2 2 } if
+    dup 1 = { inserPath1 1 } if
+    drop
+    key+
+} : key,
+
+
+// append key to the aray 
+// ( keyarray, key -- keyarray', i  )
+{
+    swap                // key, keyarray
+    key#                // key, keyarray, keynum
+    dup                 // key, keyarray, keynum, keynum
+    @' pubkn            // key, keyarray, keynum, keynum, keymax
+    = abort"key&: array is full"
+    rot                 // keyarray, keynum, key
+    over                // keyarray, keynum, key, keynum
+    3 roll              // keynum, key, keynum, keyarray
+    swap                // keynum, key, keyarray, keynum
+    rot                 // keynum, keyarray, keynum, key
+    swap                // keynum, keyarray, key, keynum
+    key,                // keynum, keyarray'
+    swap                // keyarray', i
+} : key&
+
+// ( cc, i -- key )
+{
+    dup 3 > { 4 - } if 
+    dup 3 >= abort"getKey: invalid index" 
+    256 *               // scc, offset := i * 256
+    swap                // offset, cc
+    <s                  // offset, scc
+    dup sbits           // offset, scc, sbits
+    256 mod             // offset, scc, sbits mod 256
+    32 =                // offset, scc, ?
+    {
+        swap            // scc, offset
+        32 +            // scc, offset + 32
+        swap            // offset', scc
+    } if
+    swap                // scc, offset
+    8 /                 // scc, offset / 8
+    B@+                 // B, scc'
+    swap drop           // scc'
+    256 u@              // key
+} : getKey
+
+// ( root, -1, p[3], p[2], p[1], p[0], 4 -- key
+{
+    roll drop           // root, p[3], p[2], p[1], p[0]
+    4 roll              // p[3], p[2], p[1], p[0], root
+    swap                // p[3], p[2], p[1], root, p[0]
+    getRef              // p[3], p[2], p[1], root, c0
+    swap drop swap      // p[3], p[2], c0, p[1]
+    getRef              // p[3], p[2], c0, c1
+    swap drop swap      // p[3], c1, p[2]
+    getRef              // p[3], c1, c2
+    swap drop swap      // c2, p[3]
+    getKey
+} : fetchPath4
+
+// ( root, -1, p[2], p[1], p[0], 3 -- key
+{
+    roll drop           // root, p[2], p[1], p[0]
+    3 roll              // p[2], p[1], p[0], root
+    swap                // p[2], p[1], root, p[0]
+    getRef              // p[2], p[1], root, c0
+    swap drop swap      // p[2], c0, p[1]
+    getRef              // p[2], c0, c1
+    swap drop swap      // c1, p[2]
+    getKey
+} : fetchPath3
+
+// ( root, -1, p[1], p[0], 2 -- key
+{
+    roll drop           // root, p[1], p[0]
+    rot                 // p[1], p[0], root
+    swap                // p[1], root, p[0]
+    getRef              // p[1], root, c0
+    swap drop swap      // c0, p[1]
+    getKey
+} : fetchPath2
+
+// ( root, -1, p[0], 1 -- key
+{
+    drop swap drop      // root, p[0]
+    getKey
+} : fetchPath1
+
+// fetch key from array for given index
+// ( keyarray, i -- key )
+{
+    swap                // i, root
+    key#                // i, root, keynum
+    rot                 // root, keynum, i
+    swap over           // root, i, keynum, i
+    <=                  // root, i, ( keynum <= i )?
+    abort"key@: index out of range"
+    // ( root, i -- )
+    index2path          // root, -1, p[k],...,p[0]
+    pathLen             // root, -1, p[k],...,p[0], plen
+    dup 4 = { fetchPath4 4 } if
+    dup 3 = { fetchPath3 3 } if
+    dup 2 = { fetchPath2 2 } if
+    dup 1 = { fetchPath1 1 } if
+    drop
+} : key@
+
+{ over swap key@ } : key@+
+
+// find the key in the array 
+// ( keyarray, key -- i, -1 or 0 )
+{
+    swap                // key, root
+    key#                // key, root, keynum
+    dup 0= { 2drop drop 0 } {
+    swap                // key, keynum, root
+    0                   // key, keynum, root, 0
+    swap over           // key, keynum, i, root, i
+    {
+        key@+           // key, keynum, i, root, key[i]
+        4 pick          // key, keynum, i, root, key[i], key
+        =               // key, keynum, i, root, ?
+        {               // the key is found
+            rot         // key, i, root, keynum
+            drop        // key, i, root
+            over        // key, i, root, i
+            swap        // key, i, i, root
+            over        // key, i, i, root, i
+        }
+        {               // next step check range 
+            swap        // key, keynum, root, i
+            1+          // key, keynum, root, i+1
+            swap        // key, keynum, i+1, root
+            over        // key, keynum, i+1, root, i+1
+        }
+        cond
+        3 pick          // key, keynum, i, root, i, keynum
+        over            // key, keynum, i, root, i, keynum, i
+        =               // key, keynum, i, root, i, ?
+    } until
+    drop                // key, keynum', i, root
+    key#                // key, keynum', i, root, keynum
+    3 pick              // key, keynum', i, root, keynum, keynum'
+    <>                  // key, keynum', i, root, ?
+    {                   // key was found
+       drop             // key, keynum', i,
+       swap drop        // key, i
+       swap drop        // i
+       -1               // i, -1
+    }
+    {                   // not found
+       drop             // key, keynum', i,
+       swap drop        // key, i
+       swap drop        // i
+       0                // i, 0                  
+    }
+    cond
+    }
+    cond
+} : key?
+
+{ over swap key? } : key?+
+
+{ <b swap B, b> <s 256 u@+ s> } : B>u
+
+{
+    DUP 3 INT GREATER   // cc, i, ?
+    IF:<{ 4 INT SUB }>  // cc, i | i - 4
+    256 INT MUL         // scc, offset := i * 256
+    SWAP                // offset, cc
+    CTOS                // offset, scc
+    DUP SBITS           // offset, scc, sbits
+    256 INT MOD         // offset, scc, sbits mod 256
+    32 INT EQUAL        // offset, scc, ?
+    IF:<{ SWAP 32 INT ADD SWAP }>
+    SWAP                // scc, offset
+    LDSLICEX            // scc", scc'
+    SWAP DROP           // scc'
+    256 PLDU            // key
+} : GETKEY
+
+{
+    SWAP DUP CTOS ROT // pc, ps, i
+    DUP ISZERO
+    IF:<{ DROP 0 PLDREFIDX }>ELSE<{ 
+        DUP ONE EQUAL 
+        IF:<{ DROP 1 PLDREFIDX }>ELSE<{ 
+            DUP 2 INT EQUAL
+            IF:<{ DROP 2 PLDREFIDX }>ELSE<{
+                DROP 3 PLDREFIDX
+            }> 
+        }> 
+    }>
+
+} : GETREF
+
+// FETCHPATH4 ( root, -1, p[3], p[2], p[1], p[0], 4 -- key )
+{
+    DROP 4 ROLL DROP    // root, p[3], p[2], p[1], p[0]
+    4 ROLL              // p[3], p[2], p[1], p[0], root
+    SWAP                // p[3], p[2], p[1], root, p[0]
+    GETREF              // p[3], p[2], p[1], root, c0
+    SWAP DROP SWAP      // p[3], p[2], c0, p[1]
+    GETREF              // p[3], p[2], c0, c1
+    SWAP DROP SWAP      // p[3], c1, p[2]
+    GETREF              // p[3], c1, c2
+    SWAP DROP SWAP      // c2, p[3]
+    GETKEY              // key
+} : FETCHPATH4
+
+// FETCHPATH3 ( root, -1, p[2], p[1], p[0], 3 -- key )
+{
+    DROP 3 ROLL DROP    // root, p[2], p[1], p[0]
+    3 ROLL              // p[2], p[1], p[0], root
+    SWAP                // p[2], p[1], root, p[0]
+    GETREF              // p[2], p[1], root, c0
+    SWAP DROP SWAP      // p[2], c0, p[1]
+    GETREF              // p[2], c0, c1
+    SWAP DROP SWAP      // c1, p[2]
+    GETKEY              // key
+} : FETCHPATH3
+
+// FETCHPATH2 ( root, -1, p[1], p[0], 2 -- key )
+{
+    DROP 2 ROLL DROP    // root, p[1], p[0]
+    2 ROLL              // p[1], p[0], root
+    SWAP                // p[1], root, p[0]
+    GETREF              // p[1], root, c0
+    SWAP DROP SWAP      // c0, p[1]
+    GETKEY              // key
+} : FETCHPATH2
+
+// FETCHPATH1 ( root, -1, p[0], 1 -- key )
+{
+    DROP SWAP DROP      // root, p[0]
+    GETKEY              // key
+} : FETCHPATH1
+
+{
+    -1 INT SWAP @' pubkn INT 2DUP GEQ 32 THROWIF 
+    <{ 2DUP LESS
+        IF:<{ 0 INT -ROT 4 INT DIV }>ELSE<{
+            ROT DUP 3 INT EQUAL
+            IF:<{ -ROT SUB ADD INC ZERO ZERO }>ELSE<{ INC -ROT 2DUP SUB ROT DROP SWAP }>
+        }>
+        DUP ISZERO
+    }>UNTIL
+    2DUP GREATER
+    IF:<{ ROT s2 PUSH ADD -ROT }>
+    2DROP
+    // now we have path, reverse it, and get the key
+    DUP ISNNEG
+    IF:<{
+        OVER ISNNEG
+        IF:<{ 
+            s2 PUSH ISNNEG
+            IF:<{
+                s3 PUSH ISNNEG
+                IF:<{ s0 s3 XCHG s2 s1 XCHG 4 INT FETCHPATH4 }>ELSE<{ s0 s2 XCHG 3 INT FETCHPATH3 }>
+            }>ELSE<{ SWAP TWO FETCHPATH2 }>
+        }>ELSE<{ ONE FETCHPATH1 }>
+    }>
+} : KEY@
+
+
+

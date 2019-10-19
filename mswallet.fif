@@ -1,0 +1,95 @@
+#!/usr/bin/env fift -s
+
+// Sign outgoing message for multisignature wallet
+//      
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+//
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+
+"TonUtil.fif" include
+"Asm.fif" include
+"KeyArray.fif" include
+"MsgArray.fif" include
+"SigArray.fif" include
+"MSWallet.fif" include
+
+true constant bounce
+3 constant send-mode                            // mode for SENDRAWMSG: +1 - sender pays fees, +2 - ignore errors
+
+{ 
+    ."usage: " @' $0 type ." <filename-base> <dest-addr> <seqno> <amount> <expirytime> <nkeys> <nsig> [-B <body-boc>] [<message>]" cr
+    ."OR     " 
+     @' $0 type ." <filename-base> <message>" cr 
+    ."      Creates a request to multisign wallet created by new-mswallet.fif, with private key loaded from file <filename-base>.pk " cr
+    ."      and address from <filename-base>.addr, and saves it into <message>.boc ('message.boc' by default)" cr 
+    ."      or add signature to existing <message>.boc" cr 1 halt
+} : usage
+
+// ( filename -- boc )
+{ dup file-exists?
+  {  file>B B>boc }
+  { ."File '" type ."' is not found " cr 1 halt } cond
+} : load-file
+
+def? $9 { @' $8 "-B" $= { @' $9 =: body-boc-file [forget] $9 def? $10 { @' $10 =: $8 [forget] $10 } { [forget] $8 } cond
+@' $# 2- =: $# } if } if
+
+@' $# dup 7 < swap 8 > or ' usage if
+@' $1 =: file-base
+@' $2 @' bounce parse-load-address =: bounce 2=: dest_addr
+@' $3 parse-int =: seqno
+@' $4 $>GR =: amount
+@' $5 parse-int =: timeout
+@' $6 parse-int =: nkey
+@' $7 parse-int =: nsig
+
+def? $8 
+{ 
+    @' $8 =: savefile
+    @' savefile +".boc" load-file
+    <s 21 u@+ swap drop 256 u@+ swap drop ref@+ =: sigarray
+    shash =: message-hash
+} 
+{ "message" =: savefile } cond
+
+@' file-base +".addr" load-address
+2dup 2=: wallet_addr
+."Source wallet address = " 2dup .addr cr 6 .Addr cr
+@' file-base +".pk" load-keypair =: wallet_pk =: wallet_pubk
+
+def? body-boc-file { @' body-boc-file file>B B>boc } { <b 0 32 u, "Giro d'Iseo" $, b> } cond
+=: body-cell
+
+@' file-base +".pubk" load-file =: keyarray
+@' keyarray key#@ @' wallet_pubk B>u key? 0= { ."public key not found in the key array" cr halt 1 } if
+=: key_index
+."Key index :" @' key_index . cr
+
+@' pubkn =: keynumber
+
+."Transferring " @' amount .GR ."to account "
+@' dest_addr 2dup @' bounce 7 + .Addr ." = " .addr 
+."seqno=0x" @' seqno x. ."bounce=" @' bounce . cr
+."Body of transfer message is " @' body-cell <s csr. cr 
+// create a message
+<b b{01} s, @' bounce 1 i, b{000100} s, @' dest_addr addr, @' amount Gram, 0 9 64 32 + + 1+ u, 
+    @' body-cell <s 2dup s-fits? not rot over 1 i, -rot { drop @' body-cell ref, } { s, } cond
+b>
+<b @' seqno 32 u, @' timeout 32 u, @' send-mode 8 u, swap ref, b>
+dup ."signing message: " <s csr. cr
+dup hash def? message-hash { dup @' message-hash <> {  ." Message if different" cr halt 1 } if } if 
+@' wallet_pk ed25519_sign_uint
+def? sigarray { @' sigarray } { @' nkey @' nsig sig[] } cond swap @' key_index sig&
+<b b{1000100} s, @' wallet_addr addr, 0 Gram, b{00} s, swap ref, swap <s s, b>
+dup ."resulting external message: " <s csr. cr
+2 boc+>B dup Bx. cr
+@' savefile +".boc" tuck B>file
+."Query expires @ " @' timeout . ."unixtime" cr
+."(Saved to file " type .")" cr
+

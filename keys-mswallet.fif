@@ -1,0 +1,56 @@
+#!/usr/bin/env fift -s
+
+// Create new or update public key array
+//      
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+//
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+
+"TonUtil.fif" include
+"Asm.fif" include
+"KeyArray.fif" include
+
+{   cr
+    ."usage: " @' $0 type ." <filename-base> [<nkey>]" cr cr
+    ."Creates or update public keys array for multisignature wallet with private key saved to or loaded from <filename-base>.pk" cr
+    ."    number of keys <nkey> (dafault 10) , where 0 < nkey <= 100" cr
+    ."    and public keys array loaded from <filename-base>.pubk " cr cr 1 halt
+} : usage
+
+$# 1 < ' usage if
+
+$1 =: file-base
+def? $2 { @' $2 parse-int } { 10 } cond constant nkey
+
+nkey 100 > { ."Number of keys can't be more then 100 " cr 1 halt } if
+nkey 0 = { ."Number of keys can't be 0 " cr 1 halt } if
+
+nkey constant pubkn
+
+// ( filename -- keyarray )
+{ dup file-exists?
+  { file>B B>boc ."Loading existing key array, setting key number to:  " key#@ @' pubkn dup =: nkey . cr  }
+  { @' nkey key[] ."Creating new key array for " @' nkey . ." keys" cr } cond
+} : load-keyarray
+
+file-base +".pk" load-generate-keypair  // pubk, pkey
+constant wallet_pk                      // pubk
+constant wallet_pubk                    // --
+file-base +".pubk" load-keyarray        // ka
+key# nkey = { ."Key array is full" cr 1 halt } if
+wallet_pubk B>u                         // ks, pubk
+2dup key? { ."Key already in the array. The key index is: " . cr 1 halt } if 
+drop key&
+."Record the key index, you will need it to sign the message: " . cr
+2 boc+>B 
+file-base +".pubk" B>file
+."Save array to the file : " file-base +".pubk" type cr
+."Now you can send file '" file-base +".pubk" type ."' to other members to collect public keys " cr cr
+."DO NOT SEND '" file-base +".pk" type ."' TO ANYONE!" cr cr
+

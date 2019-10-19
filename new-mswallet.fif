@@ -1,0 +1,89 @@
+#!/usr/bin/env fift -s
+
+// Create new Multi signature wallet
+//      
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+//
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+
+"TonUtil.fif" include
+"Asm.fif" include
+"MSWallet.fif" include
+
+{   cr
+    ."usage: " @' $0 type ." <workchain-id> <filename-base> <nkey> <nsig>" cr cr
+    ."Creates a new multisignature wallet in specified workchain, with private key saved to or loaded from <filename-base>.pk" cr
+    ."    number of keys <nkey> , where 0 < nkey <= 100" cr
+    ."    number of signatures <nsig> needed to send the message, where 0 < nsig <= nkey" cr
+    ."    and public keys array loaded from <filename-base>.pubk " cr cr 1 halt
+} : usage
+
+$# 4 < ' usage if
+
+$1 parse-workchain-id =: wc
+$2 =: file-base
+$3 parse-int =: nkey
+$4 parse-int =: nsig
+
+nkey 100 > { ."Number of keys can't be more then 100 " cr 1 halt } if
+nkey 0 = { ."Number of keys can't be 0 " cr 1 halt } if
+nsig 0 = { ."Number of signatures to send a message can't be 0 " cr 1 halt } if
+nsig nkey > { ."Number of signatures to send a message can't more then number of keys " cr 1 halt } if
+
+nkey constant keynumber
+nkey constant pubkn
+
+."Creating new multisignature wallet in workchain " wc . cr
+
+// ( filename -- keyarray )
+{ dup file-exists?
+  {  file>B B>boc }
+  { ."Public keys array file is not found" cr 1 halt } cond
+} : load-keyarray
+
+file-base +".pk" load-generate-keypair  // pubk, pkey
+constant wallet_pk                      // pubk
+constant wallet_pubk                    // --
+
+<{ MSWALLET }>c                         // code-c
+file-base +".pubk" load-keyarray        // code-c, ka
+key# nkey <> 
+{ ." Number of keys in the array is not equal to nkey param" cr 1 halt } if
+nkey nsig msg[]                         // code-c, ka, ma
+nkey                                    // code-c, ka, ma, n
+nsig                                    // code-c, ka, ma, n, k
+<b                                      // code-c, ka, ma, n, k, b
+0 32 u,                                 // code-c, ka, ma, n, k, b' { seqno }
+swap 16 u,                              // code-c, ka, ma, n, b" { seqno, k }
+swap 16 u,                              // code-c, ka, ma, b"' { seqno, k, n }
+swap ref,                               // code-c, ka, b"" { seqno, k, n Refs: { ma } }
+swap ref,                               // code-c, b""' { seqno, k, n Refs: { ma, ka } }
+b>                                      // code-c, isc
+null                                    // code-c, isc, null
+<b                                      // code-c, isc, null, b
+b{0011} s,                              // code-c, isc, null, b' { b{0011} }
+3 roll ref,                             // isc, null, b" { b{0011} Refs: { code-c } }
+rot ref,                                // null, b"' { b{0011} Refs: { code-c, isc }  } 
+swap dict,                              // b""  { b{0011} Refs: { code-c, isc, lib = null }  }
+b>                                      // state-init-cell
+dup ."StateInit: " <s csr. cr
+dup hash wc swap 2dup 2constant wallet_addr
+."new wallet address = " 2dup .addr cr
+2dup file-base +".addr" save-address-verbose
+."Non-bounceable address (for init): " 2dup 7 .Addr cr
+."Bounceable address (for later access): " 6 .Addr cr
+<b 0 32 u, -1 32 i, b>
+dup ."signing message: " <s csr. cr
+dup hash wallet_pk ed25519_sign_uint rot
+<b b{1000100} s, wallet_addr addr, b{000010} s, swap <s s, b{0} s, swap B, swap <s s, b>
+dup ."External message for initialization is " <s csr. cr
+2 boc+>B dup Bx. cr
+file-base +"-query.boc" tuck B>file
+."(Saved wallet creating query to file " type .")" cr
+

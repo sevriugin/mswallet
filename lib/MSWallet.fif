@@ -1,0 +1,213 @@
+//
+// MSWallet - multi signature wallet with 0 < n <= 100 key number and 0 < k <= n signature number to approve message
+//
+// Dictionary:
+//
+// TVM
+//      MSWALLET
+//      
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+//
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+
+"KeyArray.fif" include
+"MsgArray.fif" include
+"SigArray.fif" include
+
+{
+    SETCP0 DUP IFNOTRET         // return if recv_internal
+    DUP 85143 INT EQUAL 
+    IFJMP:<{                    // "seqno" get-method
+        DROP c4 PUSHCTR         // msg-s", isc
+        CTOS 32 PLDU            // cnt
+    }>
+    DUP 85144 INT EQUAL
+    IFJMP:<{                    // "msgarray" get-method
+        DROP c4 PUSHCTR         // msg-s", isc
+        CTOS PLDREF             // msgarray
+    }>
+    DUP 85145 INT EQUAL
+    IFJMP:<{                    // "keyarray" get-method
+        DROP c4 PUSHCTR         // msg-s", isc
+        CTOS ONE PLDREFVAR      // keyarray
+    }>
+    INC 32 THROWIF	            // fail unless recv_external
+    // msg-s"{ msg_seqno: uint 32, valid_until: uint 32, send-mode: uint 8, Refs:{ sigarray:= sa, int-message-body-cell:= imb-c } }
+    LDREF                       // sa, msg-s"':= int-message-slice (im-s)
+    DUP HASHSU SWAP             // sa, hash, msg-s"'
+    32 LDU                      // sa, hash, msg_seqno, msg-s""
+    32 LDU                      // sa, hash, msg_seqno, valid_until, msg-s""' { send-mode: uint 8, Refs: { imb-c } }
+    OVER                        // sa, hash, msg_seqno, valid_until, msg-s""', valid_until
+    NOW LEQ
+    IFJMP:<{                    // Message is exiped check if it is in the message queue and delete it from there
+        35 THROW
+    }>
+                                // sa, hash, msg_seqno, valid_until, msg-s""'
+    c4 PUSHCTR CTOS             // sa, hash, msg_seqno, valid_until, msg-s""', iss
+    32 LDU                      // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, iss'
+    16 LDU                      // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, iss"
+    16 LDU                      // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, iss"'
+    LDREF                       // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, iss""
+    LDREF                       // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, iss""'
+    ENDS                        // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray
+    s7 s4 PUSH2                 // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, msg_seqno, stored_seqno
+    EQUAL
+    IFNOT:<{
+                                // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray
+        OVER                    // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, msgarray
+        s9 PUSH                 // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, msgarray, hash
+        MSG?                    // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em, ?
+        33 THROWIFNOT
+                                // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em
+        CTOS 256 LDU SWAP DROP  // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em'
+        32 LDU SWAP DROP        // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em"
+        s3 PUSH                 // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em", n
+        LDUX                    // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, stored_msk, em"
+        DROP                    // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, stored_msk
+    }>ELSE<{                    // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray
+        ZERO                    // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, 0             
+    }>
+                                // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, stored_msk | 0 :=  stored_msk
+    10 ROLL SWAP                // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, sa, stored_msk
+    s10 PUSH SWAP               // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, sa, hash, stored_msk 
+                                // ....                                                            ka,       sa, h,           msk
+    SIGCHECK                    // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, msk', ?
+    34 THROWIFNOT
+    DUP SIGMSK#                 // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, msk', sig_number
+    ACCEPT                      // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, msk', sig_number
+    s4 PUSH                     // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, msk', sig_number, k
+    LESS                        // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, msk', ?
+    IFNOT:<{                    // sending message and clean the message array if msg_seqno != stored_seqno
+                                // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, msk'
+        2DROP 2DROP             // hash, msg_seqno, valid_until, msg-s""', stored_seqno
+        SWAP                    // hash, msg_seqno, valid_until, stored_seqno, msg-s""'
+        DUP SREFS
+        IF:<{ 
+            8 LDU               // hash, msg_seqno, valid_until, stored_seqno, send-mode, msg-s"""
+            LDREF               // hash, msg_seqno, valid_until, stored_seqno, send-mode, imb-c, msg-s"""
+            s0 s2 XCHG          // hash, msg_seqno, valid_until, stored_seqno, msg-s""", imb-c, send-mode
+            SENDRAWMSG
+        }>
+        ENDS                    // hash, msg_seqno, valid_until, stored_seqno
+        DUP                     // hash, msg_seqno, valid_until, stored_seqno, stored_seqno
+        3 ROLL                  // hash, valid_until, stored_seqno, stored_seqno, msg_seqno
+        EQUAL                   // hash, valid_until, stored_seqno, ?
+        IFNOT:<{
+            c4 PUSHCTR          // hash, valid_until, stored_seqno, isc
+            CTOS LDREF          // hash, valid_until, stored_seqno, msgarray, iss'
+            s0 s4 XCHG          // iss', valid_until, stored_seqno, msgarray, hash
+            MSGX                // iss', valid_until, stored_seqno, msgarray'
+            NEWC                // iss', valid_until, stored_seqno, msgarray', b
+            STREF               // iss', valid_until, stored_seqno, b'
+            SWAP INC SWAP       // iss', valid_until, stored_seqno', b'
+            32 STU              // iss', valid_until, b"
+            SWAP DROP SWAP      // b", iss'
+            32 LDU SWAP DROP    // b" { stored_seqno' Refs: { ma' } }, iss" { k, n, Refs: { ka } )
+            SWAP STSLICE        // b"'
+            ENDC                // isc'
+            c4 POP              // --
+        }>ELSE<{                // hash, valid_until, stored_seqno
+            INC                 // hash, valid_until, stored_seqno'
+            c4 PUSHCTR          // hash, valid_until, stored_seqno', isc
+            CTOS 32 LDU SWAP    // hash, valid_until, stored_seqno', iss', stored_seqno
+            DROP                // hash, valid_until, stored_seqno', iss'
+            NEWC                // hash, valid_until, stored_seqno', iss', b
+            s1 s2 XCHG          // hash, valid_until, iss', stored_seqno', b
+            32 STU              // hash, valid_until, iss', b'
+            STSLICE             // hash, valid_until, b"
+            ENDC                // hash, valid_until, isc'
+            c4 POP              // hash, valid_until
+            2DROP               // --
+        }>
+    }>ELSE<{                    // add message if msg_seqno == stored_seqno or update if msg_seqno != stored_seqno
+                                // hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, msk'
+        5 ROLL                  // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', msg-s""'
+        s7 PUSH                 // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', msg-s""', msg_seqno
+        NEWC                    // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', msg-s""', msg_seqno, b
+        32 STU                  // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', msg-s""', b'
+        s7 PUSH                 // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', msg-s""', b', valid_until
+        SWAP 32 STU             // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', msg-s""', b"
+        STSLICE                 // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', b"'
+        ENDC                    // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', im-c
+        s7 PUSH                 // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', im-c, msg_seqno
+        s6 PUSH                 // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', im-c, msg_seqno, stored_seqno
+        EQUAL
+        IFNOT:<{                // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', im-c
+            DROP                // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk'
+            5 ROLL DROP         // hash, msg_seqno, stored_seqno, k, n, msgarray, msk'
+                                // MSGU: ( msgarray, hash, s -- msgarray')
+            SWAP                // hash, msg_seqno, stored_seqno, k, n, msgarray, msk'
+            6 ROLL SWAP         // msg_seqno, stored_seqno, k, n, msgarray, hash, msk'        
+            MSGU                // msg_seqno, stored_seqno, k, n, msgarray'
+
+        }>ELSE<{                // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', im-c
+                                // MSG&: ( msgarray, msg, t, s -- msgarray' )
+            6 ROLL              // hash, msg_seqno, stored_seqno, k, n, msgarray, msk', im-c, valid_until
+            ROT                 // hash, msg_seqno, stored_seqno, k, n, msgarray, im-c, valid_until, msk'
+                                // ...                          MSG&: ( msgarray, msg,  t,           s -- msgarray' )
+            MSG&                // hash, msg_seqno, stored_seqno, k, n, msgarray'
+            5 ROLL DROP         // msg_seqno, stored_seqno, k, n, msgarray'
+        }>
+                                // msg_seqno, stored_seqno, k, n, msgarray'
+        c4 PUSHCTR              // msg_seqno, stored_seqno, k, n, msgarray', isc
+        CTOS LDREF              // msg_seqno, stored_seqno, k, n, msgarray', msgarray, iss'
+        SWAP DROP               // msg_seqno, stored_seqno, k, n, msgarray', iss'
+        32 LDU                  // msg_seqno, stored_seqno, k, n, msgarray', stored_seqno, iss"
+        SWAP INC                // msg_seqno, stored_seqno, k, n, msgarray', iss", stored_seqno'
+        NEWC                    // msg_seqno, stored_seqno, k, n, msgarray', iss", stored_seqno', b
+        32 STU                  // msg_seqno, stored_seqno, k, n, msgarray', iss", b'
+        s2 s1 XCHG              // msg_seqno, stored_seqno, k, n, iss", msgarray', b'
+        STREF                   // msg_seqno, stored_seqno, k, n, iss", b" { stored_seqno' Refs: { msgarray' } }
+        STSLICE                 // msg_seqno, stored_seqno, k, n, b"'
+        ENDC                    // msg_seqno, stored_seqno, k, n, isc'
+        c4 POP                  // msg_seqno, stored_seqno, k, n
+        2DROP 2DROP             // --
+    }>
+                    
+    // c4 PUSHCTR
+    // Clean up if needed
+    c4 PUSHCTR                  // isc
+    CTOS LDREF                  // msgarray, iss'
+    SWAP DUP CTOS               // iss', msgarray, mas
+    32 LDU                      // iss', msgarray, msg_number, mas'
+    32 PLDU                     // iss', msgarray, msg_number, nearest expiry time (net)
+    SWAP                        // iss', msgarray, net, msg_number
+    DUP ISPOS                   // iss', msgarray, net, msg_number, ?
+    IF:<{                       // iss', msgarray, net, msg_numer
+        SWAP                    // iss', msgarray, msg_numer, net
+        NOW LEQ                 // iss', msgarray, msg_number, ( net <= now )
+        IF:<{                   // iss', msgarray, msg_number
+            DROP                // iss', msgarray
+            NOW                 // iss', msgarray, now
+            MSGXT               // iss', msgarray'
+            NEWC                // iss', msgarray', b
+            STREF               // iss', b'
+            STSLICE             // b"
+            ENDC                // isc'
+            c4 POP              // --
+        }>ELSE<{                // iss', msgarray, msg_number
+            10 INT              // iss', msgarray, msg_number, 10
+            GREATER             // iss', msgarray, ?
+            IF:<{               // iss', msgarray
+                NOW             // iss', msgarray, now
+                MSGXT           // iss', msgarray'
+                NEWC            // iss', msgarray', b
+                STREF           // iss', b'
+                STSLICE         // b"
+                ENDC            // isc'
+                c4 POP          // --
+            }>ELSE<{            // iss', msgarray
+                2DROP           // --
+            }>
+        }>
+    }>ELSE<{                    // iss', msgarray, net, msg_numer
+        2DROP 2DROP             // --
+    }>
+    // c4 PUSHCTR 
+} : MSWALLET

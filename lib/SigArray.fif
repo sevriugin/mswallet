@@ -1,0 +1,357 @@
+//
+// Array of signatures B 512 with key index in 0..100
+//
+// Dictionary:
+//
+//      sig[]       = create empty array of sig with 'keyn' max number of keys and signum - max signature to store
+//      sig&        = add new sigature to the array
+//      sig[]>      = print out the array
+//      sig#        = return array length
+//      sigMSK      = return signatures mask of the array
+//      sigMSK#     = return number of signatures in the given mask
+//      i>m         = key index to key mask macros
+//      sig@        = fetch the first signature from the array and return the rest of array
+//      
+// TVM
+//      SIG[]       = sig[]
+//      SIG#        = sig#
+//      SIGMSK      = sigMSK
+//      SIGMSK#     = sigMSK#
+//      I>M         = i>m
+//      SIG@        = sig@
+//      SIGCHECK    = Check signatures (sigarray) for given keyarray, hash and mask 
+//      
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+//
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+
+
+100 constant keynumber
+
+// create new signature array
+// ( keyn, signum  -- sigarray )
+{
+    <b 
+    0 16 u,     // number of signatures in the array (len)
+    swap        
+    16 u,       // number of signatures to send the message (signum | k )
+    swap 
+    dup =: keynumber
+    0 swap
+    u,          // signatures mask (msk)
+    b>
+} : sig[]
+
+{
+    NEWC                // s, b
+    ZERO SWAP           // s, 0, b
+    16 STU              // s, b'
+    16 STU              // b"
+    ZERO SWAP           // 0, b"
+    @' keynumber STU    // b"'        
+    ENDC                // ma
+} : SIG[]
+
+// add new sigature to the array
+// ( sigarray, sig, i -- sigarray' )
+{
+    rot             // sa, s, i,
+    <s              // s, i, sas
+    16 u@+          // s, i, len, sas'
+    16 u@+ swap     // s, i, len, sas", signum
+    rot             // s, i, sas", signum, len
+    2dup = abort"sig&: all signatures collected, no need for one more"
+    rot             // s, i, signum, len, sas"
+    @' keynumber 
+    u@+             // s, i, signum, len, msk, sas"'
+    swap            // s, i, signum, len, sas"', msk
+    4 pick          // s, i, signum, len, sas"', msk, i
+    @' keynumber    // s, i, signum, len, sas"', msk, i, keynumber
+    2dup >= abort"sig&: signature index out of range"
+    drop            // s, i, signum, len, sas"', msk, i
+    1 swap <<       // s, i, signum, len, sas"', msk, index_mask := im
+                    // s, i, signum, len, sas"', msk, im
+    2dup and        // s, i, signum, len, sas"', msk, im, msk & im
+    0<> abort"sig&: signature for this index already in the file"
+                    // s, i, signum, len, sas"', msk, im
+    or              // s, i, signum, len, sas"', msk'
+    rot 1+          // s, i, signum, sas"', msk', len'
+    rot             // s, i, signum, msk', len', sas"'
+    <b              // s, i, signum, msk', len', sas"', b
+    swap            // s, i, signum, msk', len', b, sas"'
+    ref@?+          // s, i, signum, msk', len', b, sas"", ns
+    {
+        rot         // s, i, signum, msk', len', sas"", ns, b
+        swap        // s, i, signum, msk', len', sas"", b, ns
+        ref,        // s, i, signum, msk', len', sas"", b'
+    }
+    {
+        swap
+    } cond
+    5 roll          // s, signum, msk', len', sas"", b', i
+    16 u,           // s, signum, msk', len', sas"", b"
+    5 roll          // signum, msk', len', sas"", b", s
+    B,              // signum, msk', len', sas"", b"'
+    b>              // signum, msk', len', sas"", root
+    <b              // signum, msk', len', sas"", root, sab
+    swap ref,       // signum, msk', len', sas"", sab'
+    rot             // signum, msk', sas"", sab', len'
+    16 u,           // signum, msk', sas"", sab"
+    3 roll          // msk', sas"", sab", signum
+    16 u,           // msk', sas"", sab"'
+    rot             // sas"", sab"', msk'
+    @' keynumber u, // sas"", sab""
+    b>              // sas"", sa'
+    swap s>         // sa'
+} : sig&
+
+{
+    dup <s csr.
+} : sig[]>
+
+// return len of the array
+// ( sigarray -- len )
+{ <s 16 u@ } : sig#
+
+{ CTOS 16 PLDU } : SIG#
+
+// return signatures mask 
+// (sigarray -- msk )
+{
+    <s 16 u@+ swap drop 16 u@+ swap drop @' keynumber u@
+} : sigMSK
+
+{
+    CTOS 16 LDU SWAP DROP 16 LDU SWAP DROP @' keynumber PLDU 
+} : SIGMSK
+
+// return signatures number for given sig. mask
+// ( msk -- signumber )
+{
+    0                           // s, 0
+    swap                        // 0, s
+    {
+        dup 1 and               // 0, s, s & 1
+        0<>                     // sn, s, ?
+        { swap 1+ swap } if     // sn, s
+        1 >>
+        dup 0=
+    } until
+    drop
+} : sigMSK#
+
+{
+    ZERO
+    SWAP
+    <{
+        DUP ONE AND
+        ZERO NEQ
+        IF:<{ SWAP INC SWAP }>
+        1 RSHIFT#
+        DUP ISZERO
+    }>UNTIL
+    DROP
+} : SIGMSK#
+
+// index to mask
+// ( i -- mask )
+{ 1 swap << } : i>m
+
+{ ONE SWAP LSHIFT } : I>M
+
+newkeypair constant pubkey constant pkey
+// ( num -- signature )
+{ <b swap 32 u, b> hash @' pkey ed25519_sign_uint } : sigGen
+
+
+// fetch the first signature from the array and return the rest of array
+// ( sigarray -- sigarray', sig, i )
+{   
+    dup sig# 0= abort"signature array is empty"
+    <s              // sas
+    <b              // sas, sab    
+    swap            // sab, sas
+    16 u@+ swap 1-  // sab, sas', len-1 := len'
+    rot swap        // sas', sab, len'
+    16 u,           // sas', sab'
+    swap            // sab', sas'
+    16 u@+          // sab', signum, sas"
+    @' keynumber 
+    u@+             // sab', signum, msk, sas"'
+    ref@?+          // sab', signum, msk, sas"", ns, ?
+    0= abort"signature array is empty"
+                    // sab', signum, msk, sas"", ns
+    <s              // sab', signum, msk, sas"", nss
+    16 u@+          // sab', signum, msk, sas"", i, nss'
+    64 B@+          // sab', signum, msk, sas"", i, s, nss"
+    ref@?+          // sab', signum, msk, sas"", i, s, nss"', nns, ?
+    {               // sab', signum, msk, sas"", i, s, nss"', nns,
+        swap        // sab', signum, msk, sas"", i, s, nns, nss"'
+        s>          // sab', signum, msk, sas"", i, s, nns
+        6 roll      // signum, msk, sas"", i, s, nns, sab'
+        swap        // signum, msk, sas"", i, s, sab', nss
+        ref,        // signum, msk, sas"", i, s, sab"
+        5 roll      // msk, sas"", i, s, sab", signum
+        16 u,       // msk, sas"", i, s, sab"'
+        rot         // msk, sas"", s, sab"', i
+        dup         // msk, sas"", s, sab"', i, i
+        i>m         // msk, sas"", s, sab"', i, im
+        5 roll      // sas"", s, sab"', i, im, msk
+        xor         // sas"", s, sab"', i, im xor msk := msk'
+        rot         // sas"", s, i, msk', sab"'
+        swap        // sas"", s, i, sab"', msk'
+        @' keynumber u, 
+                    // sas"", s, i, sab""
+        b>          // sas"", s, i, sa'
+        3 roll      // s, i, sa', sas""
+        s>          // s, i, sa'
+        -rot        // sa', s, i,
+    }
+    {               // sab', signum, msk, sas"", i, s, nss"'
+        s>          // sab', signum, msk, sas"", i, s
+        5 roll      // signum, msk, sas"", i, s, sab'
+        5 roll      // msk, sas"", i, s, sab', signum
+        16 u,       // msk, sas"", i, s, sab"
+        rot         // msk, sas"", s, sab", i
+        dup         // msk, sas"", s, sab", i, i
+        i>m         // msk, sas"", s, sab", i, im
+        5 roll      // sas"", s, sab", i, im, msk
+        xor         // sas"", s, sab", i, im xor msk := msk'
+        rot         // sas"", s, i, msk', sab"
+        swap        // sas"", s, i, sab", msk'
+        @' keynumber u,
+                    // sas"", s, i, sab"'
+        b>          // sas"", s, i, sa'
+        3 roll      // s, i, sa', sas""
+        s>          // s, i, sa'
+        -rot        // sa', s, i,
+    }
+    cond
+} : sig@
+
+{
+    CTOS            // sas
+    NEWC            // sas, sab    
+    SWAP            // sab, sas
+    16 LDU SWAP DEC // sab, sas', len-1 := len'
+    ROT             // sas', len', sab
+    16 STU          // sas', sab'
+    SWAP            // sab', sas'
+    16 LDU          // sab', signum, sas"
+    @' keynumber 
+    LDU             // sab', signum, msk, sas"'
+    LDREF           // sab', signum, msk, ns, sas""
+    SWAP            // sab', signum, msk, sas"", ns
+    CTOS            // sab', signum, msk, sas"", nss
+    16 LDU          // sab', signum, msk, sas"", i, nss'
+    512 INT LDSLICEX          
+                    // sab', signum, msk, sas"", i, s, nss"
+    REF@?+          // sab', signum, msk, sas"", i, s, nns, nss"' ?
+    IF:<{ 
+        ENDS        // sab', signum, msk, sas"", i, s, nns
+        6 ROLL      // signum, msk, sas"", i, s, nns, sab'
+        STREF       // signum, msk, sas"", i, s, sab"
+        5 ROLL      // msk, sas"", i, s, sab", signum
+        SWAP 16 STU // msk, sas"", i, s, sab"'
+    }>ELSE<{        // sab', signum, msk, sas"", i, s, nss"'
+        ENDS        // sab', signum, msk, sas"", i, s       
+        5 ROLL      // signum, msk, sas"", i, s, sab'
+        5 ROLL SWAP // msk, sas"", i, s, signum, sab'
+        16 STU      // msk, sas"", i, s, sab"
+    }>
+                    // msk, sas"", i, s, sab"'
+        ROT         // msk, sas"", s, sab"', i
+        DUP         // msk, sas"", s, sab"', i, i
+        I>M         // msk, sas"", s, sab"', i, im
+        5 ROLL      // sas"", s, sab"', i, im, msk
+        XOR         // sas"", s, sab"', i, im xor msk := msk'
+        ROT         // sas"", s, i, msk', sab"'
+        @' keynumber
+        STU         // sas"", s, i, sab""
+        ENDC        // sas"", s, i, sa'
+        3 ROLL      // s, i, sa', sas""
+        ENDS        // s, i, sa'
+        -ROT        // sa', s, i,
+} : SIG@
+
+{ <b swap B, b> <s 256 u@+ s> } : B>u
+
+// TVM signature check
+// 
+// ( keyarray, sigarray, hash, mask -- mask', -1 or 0 )
+//
+//  @ sigtature from sigarray, check index in the 'mask' if 'im' xor 'mask' and 'im' == 0 thet skyp the key - already cheched 
+//  if not then extract pub_key using key index from the keyarray and check the hash signature using CHKSIGNU
+//  if sigature is correct then update mask and move to enother sig from the array if any
+//  if signature is wrong stop processing and return 0 (false)
+//  if all signature are correct then return updated musk and -1 (true)
+{
+                                    // ka, sa, h, msk
+    ROT                             // ka, h, msk, sa
+    DUP SIG#                        // ka, h, msk, sa, len
+    DUP ISPOS                       // ka, h, msk, sa, len, ?
+    IF:<{                           // ka, h, msk, sa, len
+        <{
+            DEC                     // ka, h, msk, sa, len'
+            SWAP                    // ka, h, msk, len' sa
+            SIG@                    // ka, h, msk, len', sa', sig, i
+            DUP                     // ka, h, msk, len', sa', sig, i, i
+            I>M                     // ka, h, msk, len', sa', sig, i, im
+            s5 PUSH                 // ka, h, msk, len', sa', sig, i, im, msk
+            AND                     // ka, h, msk, len', sa', sig, i, msk & im
+            ISZERO                  // ka, h, msk, len', sa', sig, i, ?
+            IF:<{                   // ka, h, msk, len', sa', sig, i
+                s5 PUSH             // ka, h, msk, len', sa', sig, i, h
+                ROT                 // ka, h, msk, len', sa', i, h, sig
+                s2 PUSH             // ka, h, msk, len', sa', i, h, sig, i
+                s8 PUSH             // ka, h, msk, len', sa', i, h, sig, i, ka
+                SWAP                // ka, h, msk, len', sa', i, h, sig, ka, i
+                KEY@                // ka, h, msk, len', sa', i, h, sig, pubk
+                CHKSIGNU            // ka, h, msk, len', sa', i, ?
+                IF:<{               // ka, h, msk, len', sa', i
+                    3 ROLL          // ka, h, len', sa', i, msk
+                    SWAP            // ka, h, len', sa', msk, i
+                    I>M             // ka, h, len', sa', msk, im
+                    OR              // ka, h, len', sa', msk | im := msk'
+                    -ROT            // ka, h, msk', len' sa'
+                    SWAP            // ka, h, msk', sa', len'
+                }>ELSE<{            // ka, h, msk, len', sa', i
+                    DROP            // ka, h, msk, len', sa'
+                    ROT DROP ZERO   // ka, h, len', sa', 0 := msk'
+                    -ROT            // ka, h, 0, len', sa'
+                    SWAP DROP ZERO  // ka, h, 0, sa', 0
+                }>
+            }>ELSE<{                // ka, h, msk, len', sa', sig, i
+                2DROP               // ka, h, msk, len', sa'                        
+                SWAP                // ka, h, msk, sa', len'
+            }>
+            DUP ISZERO
+        }>UNTIL
+                                    // ka, h, msk', sa', 0
+        2DROP                       // ka, h, msk'
+        DUP ISPOS                   // ka, h, msk', ?
+        IF:<{                       // ka, h, msk' 
+            SWAP DROP               // ka, msk'
+            SWAP DROP               // msk'
+            -1 INT                  // msk', -1
+        }>ELSE<{                    // ka, h, 0
+            SWAP DROP               // ka, 0
+            SWAP DROP               // 0
+        }>
+
+    }>ELSE<{ 2DROP 2DROP ZERO }>
+} : SIGCHECK
+
+
+
+
+
+
+
+

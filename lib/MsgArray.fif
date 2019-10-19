@@ -1,0 +1,1589 @@
+//
+// Array of messages 
+// msg[] = message envelop list
+// message envelop = { message hash (256), message expiry time (32), signmask(keynumber); ref(msg), ref(next envelop) }
+//
+// Dictionary:
+//
+//      msg[]   = create empty array of message for given 'keynumber' and 'signum'
+//      msg&    = add new messag to the array
+//      msg?    = find message for given hash and return message envelop (emsg)
+//      msg@    = @ message from the message envelop
+//      msgX    = delete message for given hash from array
+//      msgXT   = clean array based on unixtime
+//      msgU    = update signature mask for message envelop for given hash 
+//      msg[]>  = printout the array
+//      msgSEL  = select messages from the array for given keyindex and selector = { true | false } and return selected messages array
+// TVM
+//      MSG[]   = msg[]
+//      MSG&    = msg&
+//      MSG?    = msg?
+//      MSG@    = msg@
+//      MSGX    = msgX
+//      MSGXT   = msgXT
+//      MSGU    = msgU
+//      
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+// 
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+
+100 constant keynumber
+
+// create new message array
+// ( keyn, signum -- msgarray )
+{
+    <b 
+    0 32 u,     // number of messages
+    2147483647 
+    32 i,       // nearest expiry time (net) unix time integer
+    swap        
+    16 u,       // number of signatures to send the message (k)
+    swap 
+    dup =: keynumber
+    16 u,       // number of keys (n)
+    b>
+} : msg[]
+
+// add new messag to the array
+// ( msgarray, msg, t, s -- msgarray' )
+{
+    rot             // ma, t, s, m
+    dup hash        // ma, t, s, m, hash
+    <b              // ma, t, s, m, hash, b
+    swap            // ma, t, s, m, b, hash
+    256 u,          // ma, t, s, m, b'
+    swap            // ma, t, s, b', m
+    ref,            // ma, t, s, b"
+    2 pick          // ma, t, s, b", t
+    32 u,           // ma, t, s, b"'
+    swap            // ma, t, b"', s
+    @' keynumber    // ma, t, b"', s, keynumber
+    u,              // ma, t, b""
+    rot             // t, b"", ma
+    <b              // t, b"", ma, mab
+    swap            // t, b"", mab, ma
+    <s              // t, b"", mab, mas
+    32 u@+          // t, b"", mab, msgnum, mas'
+    swap            // t, b"", mab, mas', msgnum
+    1+              // t, b"", mab, mas', msgnum + 1
+    rot swap        // t, b"", mas', mab, msgnum + 1
+    32 u,           // t, b"", mas', mab'
+    swap            // t, b"", mab', mas'
+    32 i@+          // t, b"", mab', t', mas"
+    swap            // t, b"", mab', mas", t'
+    4 roll          // b"", mab', mas", t', t
+    2dup >          // b"", mab', mas", t', t, (t' > t)
+    {
+        swap drop   // b"", mab', mas", t
+        rot swap    // b"", mas", mab', t
+        32 i,       // b"", mas", mab"
+    }
+    {
+        drop        // b"", mab', mas", t'
+        rot swap    // b"", mas", mab', t
+        32 i,       // b"", mas", mab"
+    } cond
+    swap            // b"", mab", mas"
+    16 u@+          // b"", mab", signum, mas"'
+    swap rot swap   // b"", mas"', mab", signum
+    16 u,           // b"", mas"', mab"'
+    swap            // b"", mab"', mas"'
+    16 u@+          // b"", mab"', keynumber, mas""
+    swap rot swap   // b"", mas"", mab"', keynumber
+    16 u,           // b"", mas"", mab""
+    swap            // b"", mab"", mas""
+    ref@?+          // b"", mab"", mas""', root, ?
+    {
+        3 roll      // mab"", mas""', root, b""
+        swap        // mab"", mas""', b"", root
+        ref,        // mab"", mas""', b""'
+        -rot        // b""', mab"", mas""'
+    } if 
+    s,              // b""', mab""'
+    swap            // mab""', b""'
+    b>              // mab""', mc
+    ref,            // mab"""
+    b>              // ma'
+} : msg&
+
+// find message for given hash and return message envelop (emsg)
+// ( msgarray := ma, hash := h -- emsg := em, -1 or 0 )
+{
+    0                       // ma, h, 0 :=flag
+    -rot                    // 0, ma, h
+    swap                    // 0, h, ma
+    <s                      // 0, h, mas
+    32 u@+                  // 0, h, msgnum, mas'
+    swap                    // 0, h, mas', msgnum
+    dup 0>
+    {
+        swap                // 0, h, msgnum, mas'
+        ref@                // 0, h, msgnum, em
+        swap                // 0, h, em, msgnum := n
+        {
+            1-              // 0, h, em, n - 1 := n'
+            swap dup        // 0, h, n', em, em
+            <s              // 0, h, n', em, sem
+            256 u@+         // 0, h, n', em, h', sem'
+            swap            // 0, h, n', em, sem', h'
+            4 pick          // 0, h, n', em, sem', h', h
+            =               // 0, h, n', em, sem', ?
+            {
+                drop        // 0, h, n', em
+                3 roll      // h, n', em, 0
+                drop -1     // h, n', em, -1
+                3 -roll     // -1, h, n', em
+                swap        // -1, h, em, n'
+                drop 0      // -1, h, em, 0
+            }
+            {
+                swap        // 0, h, n', sem', em
+                drop        // 0, h, n', sem'
+                ref@+       // 0, h, n', sem", msg
+                drop        // 0, h, n', sem"
+                ref@?+      // 0, h, n', sem"', next_envelop := nem, ?
+                0=          // 0, h, n', sem"', nem, ?'
+                {           // 0, h, n', sem"'
+                    2drop 0 // 0, h, 0
+                    null    // 0, h, 0, null
+                }
+                {           // 0, h, n', sem"', nem
+                    swap    // 0, h, n', nem, sem"'
+                    drop    // 0, h, n', nem
+                }
+                cond
+                swap        // 0, h, nem, n'
+            }
+            cond
+            dup 0=
+        } until
+                            // flag, h, em | null, 0
+        drop                // flag, h, em | null
+        rot                 // h, em | null, flag
+        { swap drop -1 }    // em, -1
+        { 2drop 0 }         // 0
+        cond
+    } 
+    { 2drop drop 0 } 
+    cond
+} : msg?
+
+// ( emsg -- msg )
+{ <s ref@ } : msg@
+
+// delete message for given hash from array
+// ( msgarray, hash -- msgarray') 
+{
+    0                           // ma, h, 0 :=flag
+    2 pick                      // ma, h, 0, ma
+    rot swap                    // ma, 0, h, ma
+    <s                          // ma, 0, h, mas
+    32 u@+                      // ma, 0, h, msgnum, mas'
+    swap                        // ma, 0, h, mas', msgnum
+    3 -roll                     // ma, msgnum, 0, h, mas'
+    3 pick                      // ma, msgnum, 0, h, mas', msgnum
+    dup 0>
+    {
+        swap                    // ma, msgnum, 0, h, msgnum, mas'
+        ref@                    // ma, msgnum, 0, h, msgnum, em
+        swap                    // ma, msgnum, 0, h, em, msgnum := n
+        {                       // ma, msgnum, 0, h, em, n
+            1-                  // ma, msgnum, 0, h, em, n - 1 := n'
+            swap dup            // ma, msgnum, 0, h, n', em, em
+            <s                  // ma, msgnum, 0, h, n', em, sem
+            256 u@+             // ma, msgnum, 0, h, n', em, h', sem'
+            swap                // ma, msgnum, 0, h, n', em, sem', h'
+            4 pick              // ma, msgnum, 0, h, n', em, sem', h', h
+            =                   // ma, msgnum, 0, h, n', em, sem', ?
+            {
+                drop            // ma, msgnum, 0, h, n', em
+                3 roll          // ma, msgnum, h, n', em, 0
+                drop -1         // ma, msgnum, h, n', em, -1
+                3 -roll         // ma, msgnum, -1, h, n', em
+                swap            // ma, msgnum, -1, h, em, n'
+                4 roll          // ma, -1, h, em, n', msgnum
+                swap            // ma, -1, h, em, msgnum, n'
+                -               // ma, -1, h, em, msgnum - n'
+                1-              // ma, -1, h, em, msgnum - n' - 1 := msgnum'
+                0               // ma, -1, h, em, msgnum', 0
+                swap            // ma, -1, h, em, 0, msgnum'
+                4 -roll         // ma, msgnum', -1, h, em, 0
+            }
+            {
+                swap            // ma, msgnum, 0, h, n', sem', em
+                5 -roll         // ma, em, msgnum, 0, h, n', sem'
+                ref@+           // ma, em, msgnum, 0, h, n', sem", msg
+                drop            // ma, em, msgnum, 0, h, n', sem"
+                ref@?+          // ma, em, msgnum, 0, h, n', sem"', next_envelop := nem, ?
+                0=              // ma, em, msgnum, 0, h, n', sem"', nem, ?'
+                {               // ma, em, msgnum, 0, h, n', sem"'
+                    2drop 0     // ma, em, msgnum, 0, h, 0
+                    null        // ma, em, msgnum, 0, h, 0, null
+                }
+                {               // ma, em, msgnum, 0, h, n', sem"', nem
+                    swap        // ma, em, msgnum, 0, h, n', nem, sem"'
+                    drop        // ma, em, msgnum, 0, h, n', nem
+                }
+                cond
+                swap            // ma, em, msgnum, 0, h, nem, n'
+            }
+            cond
+            dup 0=
+        } until
+                                // ma, em[0], em[1],..., em[k-1], msgnum, flag, h, em | null, 0
+        drop                    // ma, em[0], em[1],..., em[k-1], msgnum, flag, h, em | null
+        rot                     // ma, em[0], em[1],..., em[k-1], msgnum, h, em | null, flag
+        {                       // found and need to delete
+            swap                // ma, em[0], em[1],..., em[k-1], msgnum, em, h
+            drop                // ma, em[0], em[1],..., em[k-1], msgnum, em
+            swap                // ma, em[0], em[1],..., em[k-1], em, msgnum := k
+            dup 0>              // ma, em[0], em[1],..., em[k-1], em, k, ?
+            {
+                -rot            // ma, em[0], em[1],..., k, em[k-1], em
+                <s              // ma, em[0], em[1],..., k, em[k-1], sem
+                ref@+           // ma, em[0], em[1],..., k, em[k-1], sem', msg
+                drop            // ma, em[0], em[1],..., k, em[k-1], sem'
+                ref@?+          // ma, em[0], em[1],..., k, em[k-1], sem", next_envelop := nem, ?
+                {               // ma, em[0], em[1],..., k, em[k-1], sem", nem
+                    swap        // ma, em[0], em[1],..., k, em[k-1], nem, sem"
+                    drop        // ma, em[0], em[1],..., k, em[k-1], nem
+                    swap        // ma, em[0], em[1],..., k, nem, em[k-1]
+                    <s          // ma, em[0], em[1],..., k, nem, sem[k-1]
+                    <b          // ma, em[0], em[1],..., k, nem, sem[k-1], b
+                    swap        // ma, em[0], em[1],..., k, nem, b, sem[k-1]
+                    ref@+       // ma, em[0], em[1],..., k, nem, b, sem[k-1]', msg
+                    rot         // ma, em[0], em[1],..., k, nem, sem[k-1]', msg, b
+                    swap        // ma, em[0], em[1],..., k, nem, sem[k-1]', b, msg
+                    ref,        // ma, em[0], em[1],..., k, nem, sem[k-1]', b'
+                    swap        // ma, em[0], em[1],..., k, nem, b', sem[k-1]'
+                    ref@+       // ma, em[0], em[1],..., k, nem, b', sem[k-1]", em
+                    drop        // ma, em[0], em[1],..., k, nem, b', sem[k-1]"
+                    s,          // ma, em[0], em[1],..., k, nem, b"
+                    swap        // ma, em[0], em[1],..., k, b", nem
+                    ref,        // ma, em[0], em[1],..., k, b"'
+                    b>          // ma, em[0], em[1],..., k, em[k-1]'
+                    swap        // ma, em[0], em[1],..., em[k-1]', k
+
+                }
+                {               // ma, em[0], em[1],..., k, em[k-1], sem"
+                    drop        // ma, em[0], em[1],..., k, em[k-1]
+                    <s          // ma, em[0], em[1],..., k, sem[k-1]
+                    <b          // ma, em[0], em[1],..., k, sem[k-1], b
+                    swap        // ma, em[0], em[1],..., k, b, sem[k-1]
+                    ref@+       // ma, em[0], em[1],..., k, b, sem[k-1]', msg
+                    rot         // ma, em[0], em[1],..., k, sem[k-1]', msg, b
+                    swap        // ma, em[0], em[1],..., k, sem[k-1]', b, msg
+                    ref,        // ma, em[0], em[1],..., k, sem[k-1]', b'
+                    swap        // ma, em[0], em[1],..., k, b', sem[k-1]'
+                    ref@+       // ma, em[0], em[1],..., k, b', sem[k-1]", em
+                    drop        // ma, em[0], em[1],..., k, b', sem[k-1]"
+                    s,          // ma, em[0], em[1],..., k, b"
+                    b>          // ma, em[0], em[1],..., k, em[k-1]'
+                    swap        // ma, em[0], em[1],..., em[k-1]', k
+                }
+                cond
+                dup 1 >
+                {
+                    {           // ma, em[0], em[1],..., em[k-1]', k
+                        1-      // ma, em[0], em[1],..., em[k-1]', k-1 := k'
+                        -rot    // ma, em[0], em[1],..., k', em[k-2], em[k-1]'
+                        swap    // ma, em[0], em[1],..., k', em[k-1]', em[k-2]
+                        <s      // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]
+                        ref@+   // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]', msg
+                        <b      // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]', msg, b
+                        swap    // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]', b, msg
+                        ref,    // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]', b'
+                        swap    // ma, em[0], em[1],..., k', em[k-1]', b', sem[k-2]'
+                        ref@?+  // ma, em[0], em[1],..., k', em[k-1]', b', sem[k-2]", nem, ?
+                        {
+                            drop
+                        } if 
+                                // ma, em[0], em[1],..., k', em[k-1]', b', sem[k-2]"
+                        s,      // ma, em[0], em[1],..., k', em[k-1]', b"
+                        swap    // ma, em[0], em[1],..., k', b", em[k-1]'
+                        ref,    // ma, em[0], em[1],..., k', b"'
+                        b>      // ma, em[0], em[1],..., k', em[k-2]'
+                        swap    // ma, em[0], em[1],..., em[k-2]', k
+                        dup 1 =
+                    }
+                    until
+                } if 
+                                // ma, em[0]', 1
+                drop            // ma, em[0]'
+                swap            // em[0]', ma
+                <s              // em[0]', mas
+                ref@+           // em[0]', mas', em
+                drop            // em[0]', mas'
+                <b              // em[0]', mas', mab
+                swap            // em[0]', mab, mas'
+                32 u@+ swap     // em[0]', mab, mas", msgnum
+                1-              // em[0]', mab, mas", msgnum - 1
+                rot             // em[0]', mas", msgnum - 1, mab
+                swap            // em[0]', mas", mab, msgnum - 1
+                32 u,           // em[0]', mas", mab'
+                swap            // em[0]', mab', mas"
+                s,              // em[0]', mab"
+                swap            // mab", em[0]'
+                ref,            // mab"'
+                b>              // ma'
+            }
+            {                   // ma, em, 0
+                drop            // ma, em
+                <s              // ma, sem
+                ref@+           // ma, sem', msg
+                drop            // ma, sem'
+                ref@?+          // ma, sem", next_envelop := nem, ?
+                {
+                                // ma, sem", nem
+                    swap        // ma, nem, sem"
+                    drop        // ma, nem
+                    swap        // nem, ma
+                    <s          // nem, mas
+                    ref@+       // nem, mas', em
+                    drop        // nem, mas'
+                    <b          // nem, mas', mab
+                    swap        // nem, mab, mas'
+                    32 u@+ swap // nem, mab, mas", msgnum
+                    1-          // nem, mab, mas", msgnum - 1
+                    rot         // nem, mas", msgnum - 1, mab
+                    swap        // nem, mas", mab, msgnum - 1
+                    32 u,       // nem, mas", mab'
+                    swap        // nem, mab', mas"
+                    s,          // nem, mab"
+                    swap        // mab", nem
+                    ref,        // mab"'
+                    b>          // ma'
+                }
+                {
+                                // ma, sem"
+                    drop        // ma
+                    <b          // ma, mab
+                    swap        // mab, ma
+                    <s          // mab, mas
+                    ref@+       // mab, mas', em
+                    drop        // mab, mas'
+                    32 u@+ swap // mab, mas", msgnum
+                    1-          // mab, mas", msgnum - 1
+                    rot         // mas", msgnum - 1, mab
+                    swap        // mas", mab, msgnum - 1
+                    32 u,       // mas", mab'
+                    swap        // mab', mas" // NEED TO FIX MAX TIME
+                    32 u@+ swap // mab', mas"', net
+                    drop        // mab', mas"'
+                    swap        // mas"', mab'
+                    2147483647  // mas"', mab', 2147483647
+                    32 u,       // mas"', mab"
+                    s,          // mab"'
+                    b>          // ma'
+                }
+                cond
+            }
+            cond
+        }
+        {                       // not found clean the stack
+            2drop               // ma, em[0], em[1],..., em[k-1], msgnum := k
+            dup 0>              // ma, em[0], em[1],..., em[k-1], k, ?
+            {
+                {               // ma, em[0], em[1],..., em[k-1], k
+                    1-          // ma, em[0], em[1],..., em[k-1], k-1
+                    swap        // ma, em[0], em[1],..., k-1, em[k-1]
+                    drop        // ma, em[0], em[1],..., k-1
+                    dup 0=
+                } until
+                                // ma, 0
+                drop            // ma
+            } if
+        }
+        cond
+    } 
+    {                       // ma, msgnum, 0, h, mas', 0
+        2drop 2drop drop    // ma
+    } 
+    cond
+} : msgX
+
+// clean array based on unixtime
+// ( msgarray, t -- msgarray') 
+{
+    0                           // ma, t, 0 :=f
+    2 pick                      // ma, t, 0, ma
+    rot swap                    // ma, 0, t, ma
+    <s                          // ma, 0, t, mas
+    32 u@+                      // ma, 0, t, msgnum, mas'
+    swap                        // ma, 0, t, mas', msgnum
+    3 -roll                     // ma, msgnum, 0, t, mas'
+    2147483647                  // ms, msgnum, 0, t, mas', maxnet := net
+    swap                        // ms, msgnum, 0, t, net, mas'
+    4 pick                      // ma, msgnum, 0, t, net, mas', msgnum
+    dup 0>
+    {
+        swap                    // ma, msgnum, 0, t, net, msgnum, mas'
+        ref@                    // ma, msgnum, 0, t, net, msgnum, em
+        swap                    // ma, msgnum, 0, t, net, em, msgnum := n 
+        {                       // ma, msgnum, 0, t, net, em, n
+            1-                  // ma, msgnum, 0, t, net, em, n - 1 := n'
+            swap dup            // ma, msgnum, 0, t, net, n', em, em
+            <s                  // ma, msgnum, 0, t, net, n', em, sem
+            256 u@+ swap drop   // ma, msgnum, 0, t, net, n', em, sem'
+            32 i@+ swap         // ma, msgnum, 0, t, net, n', em, sem", t'
+            5 pick              // ma, msgnum, 0, t, net, n', em, sem", t', t
+            over                // ma, msgnum, 0, t, net, n', em, sem", t', t, t'
+            >                   // ma, msgnum, 0, t, net, n', em, sem", t', ?
+            {                   // delete this message bacause msg expiry time t' < t 
+                drop            // ma, msgnum, 0, t, net, n', em, sem"
+                swap drop       // ma, msgnum, 0, t, net, n', sem"
+                5 roll          // ma, 0, t, net, n', sem", msgnum
+                1-              // ma, 0, t, net, n', sem", msgnum - 1 := msgnum'
+                5 -roll         // ma, msgnum', 0, t, net, n', sem"
+                4 roll          // ma, msgnum', t, net, n', sem", 0
+                drop -1         // ma, msgnum', t, net, n', sem", -1 := f'
+                4 -roll         // ma, msgnum', f', t, net, n', sem"
+            }
+            {                   // keep this message in the array
+                                // ma, msgnum, 0, t, net, n', em, sem", t'
+                4 roll          // ma, msgnum, 0, t, n', em, sem", t', net
+                2dup <          // ma, msgnum, 0, t, n', em, sem", t', net, ?
+                {
+                    drop dup    // ma, msgnum, 0, t, n', em, sem", t', t' := net'
+                } if
+                4 -roll         // ma, msgnum, 0, t, net', n', em, sem", t'
+                rot             // ma, msgnum, 0, t, net', n', sem", t', em
+                7 -roll         // ma, em, msgnum, 0, t, net', n', sem", t'
+                drop            // ma, em, msgnum, 0, t, net', n', sem"
+            }
+            cond
+                                // ma, em, msgnum', f', t, net', n', sem"
+            ref@+ drop          // ma, em, msgnum', f', t, net', n', sem"'
+            ref@?+              // ma, em, msgnum', f', t, net', n', sem"", nem, ?
+            0=                  // ma, em, msgnum', f', t, net', n', sem"", nem, ?'
+            {
+                2drop 0         // ma, em, msgnum', f', t, net', 0
+                null            // ma, em, msgnum', f', t, net', 0, null
+            }
+            {
+                swap            // ma, em, msgnum', f', t, net', n', nem, sem""
+                drop            // ma, em, msgnum', f', t, net', n', nem
+            }
+            cond         
+                                // ma, em, msgnum', f', t, net', n', nem | null := em'
+                                // MUST BE: ma, msgnum, f, t, net, em, n
+            swap                // ma, em, msgnum', f', t, net', em', n'
+            dup 0=
+        } until
+                                // ma, em[0], em[1],..., em[k-1], k, f', t, net', null, 0
+        2drop                   // ma, em[0], em[1],..., em[k-1], k, f', t, net'
+        rot                     // ma, em[0], em[1],..., em[k-1], k, t, net', f'
+        {                       // need to rebuild the array
+                                // ma, em[0], em[1],..., em[k-1], k, t, net'
+            swap drop swap      // ma, em[0], em[1],..., em[k-1], net', k
+            dup 0>              // ma, em[0], em[1],..., em[k-1], net', k, ?
+            {                   // ma, em[0], em[1],..., em[k-1], net', k
+                rot             // ma, em[0], em[1],..., net', k, em[k-1]
+                <s              // ma, em[0], em[1],..., net', k, sem[k-1]
+                ref@+           // ma, em[0], em[1],..., net', k, sem[k-1]', msg
+                <b              // ma, em[0], em[1],..., net', k, sem[k-1]', msg, b
+                swap            // ma, em[0], em[1],..., net', k, sem[k-1]', b, msg
+                ref,            // ma, em[0], em[1],..., net', k, sem[k-1]', b'
+                swap            // ma, em[0], em[1],..., net', k, b, sem[k-1]'
+                ref@?+          // ma, em[0], em[1],..., net', k, b, sem[k-1]", nem, ?
+                {
+                    drop        // ma, em[0], em[1],..., net', k, b, sem[k-1]"
+                } if
+                s,              // ma, em[0], em[1],..., net', k, b'
+                b>              // ma, em[0], em[1],..., net', k, em[k-1]'
+                -rot            // ma, em[0], em[1],..., em[k-1]', net', k
+                dup 1 >
+                {
+                    dup         // ma, em[0], em[1],..., em[k-1]', net', k, k
+                    {
+                        1-      // ma, em[0], em[1],..., em[k-2], em[k-1]', net', k, k-1 := k'
+                                // ma, em[0], em[1],..., em[k-2], em[k-1]', net', k, k'
+                        4 roll  // ma, em[0], em[1],..., em[k-1]', net', k, k', em[k-2]
+                        <s      // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]
+                        ref@+   // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', msg
+                        <b      // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', msg, b
+                        swap    // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', b, msg
+                        ref,    // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', b'
+                        swap    // ma, em[0], em[1],..., em[k-1]', net', k, k', b', sem[k-2]'
+                        ref@?+  // ma, em[0], em[1],..., em[k-1]', net', k, k', b', sem[k-2]", nem, ?
+                        {
+                            drop
+                        } if
+                                // ma, em[0], em[1],..., em[k-1]', net', k, k', b', sem[k-2]"
+                        s,      // ma, em[0], em[1],..., em[k-1]', net', k, k', b"
+                        4 roll  // ma, em[0], em[1],..., net', k, k', b", em[k-1]'
+                        ref,    // ma, em[0], em[1],..., net', k, k', b"'
+                        b>      // ma, em[0], em[1],..., net', k, k', em[k-2]'
+                        3 -roll // ma, em[0], em[1],..., em[k-2]', net', k, k'
+
+                        dup 1 =
+                    } until
+                                // ma, em[0]', net', k, 1
+                    drop        // ma, em[0]', net', k
+                    3 roll      // em[0], net', 1, ma
+                    <s          // em[0], net', 1, mas
+                    32 u@+      // em[0], net', 1, msgnum, mas'
+                    swap drop   // em[0], net', 1, mas'
+                    <b          // em[0], net', 1, mas', mab
+                    rot         // em[0], net', mas', mab, 1
+                    32 u,       // em[0], net', mas', mab'
+                    swap        // em[0], net', mab', mas'
+                    32 i@+      // em[0], net', mab', net, mas"
+                    swap drop   // em[0], net', mab', mas"
+                    swap        // em[0], net', mas", mab'
+                    rot         // em[0], mas", mab', net
+                    32 i,       // em[0], mas", mab"
+                    swap        // em[0], mab", mas"
+                    ref@?+      // em[0], mab", mas"', em, ?
+                    {
+                        drop    // em[0], mab", mas"'
+                    } if
+                    swap        // em[0], mas"', mab"
+                    rot         // mas"', mab", em[0]
+                    ref,        // mas"', mab"'
+                    swap        // mab"', mas"'
+                    s,          // mab""
+                    b>          // ma'
+                }
+                {
+                                // ma, em[0], net', 1
+                    3 roll      // em[0], net', 1, ma
+                    <s          // em[0], net', 1, mas
+                    32 u@+      // em[0], net', 1, msgnum, mas'
+                    swap drop   // em[0], net', 1, mas'
+                    <b          // em[0], net', 1, mas', mab
+                    rot         // em[0], net', mas', mab, 1
+                    32 u,       // em[0], net', mas', mab'
+                    swap        // em[0], net', mab', mas'
+                    32 i@+      // em[0], net', mab', net, mas"
+                    swap drop   // em[0], net', mab', mas"
+                    swap        // em[0], net', mas", mab'
+                    rot         // em[0], mas", mab', net
+                    32 i,       // em[0], mas", mab"
+                    swap        // em[0], mab", mas"
+                    ref@?+      // em[0], mab", mas"', em, ?
+                    {
+                        drop    // em[0], mab", mas"'
+                    } if
+                    swap        // em[0], mas"', mab"
+                    rot         // mas"', mab", em[0]
+                    ref,        // mas"', mab"'
+                    swap        // mab"', mas"'
+                    s,          // mab""
+                    b>          // ma'
+                }
+                cond
+                                
+            }
+            {                   // ma, net', 0
+                drop            // ma, net'
+                swap            // net', ma
+                <s              // net', mas
+                32 u@+          // net', msgnum, mas'
+                swap drop 0     // net', mas', 0
+                <b              // net', mas', 0, mab
+                swap            // net', mas', mab, 0
+                32 u,           // net', mas', mab'
+                swap            // net', mab', mas'
+                32 i@+          // net', mab', net, mas"
+                swap drop       // net', mab', mas"
+                swap            // net', mas", mab'
+                rot             // mas", mab', net'
+                32 i,           // mas", mab"
+                swap            // mab", mas"
+                ref@?+          // mab", mas"', em, ?
+                {
+                    drop        // mab", mas"'
+                } if
+                s,              // mab"'
+                b>              // ma'
+            }
+            cond
+        }
+        {                       // nothing to change except 'net' clean the stack
+                                // ma, em[0], em[1],..., em[k-1], k, t, net
+            swap drop swap      // ma, em[0], em[1],..., em[k-1], net', k
+            dup 0>              // ma, em[0], em[1],..., em[k-1], net', k, ?
+            {
+                {   
+                    1-          // ma, em[0], em[1],..., em[k-1], net', k - 1 := k'
+                    rot         // ma, em[0], em[1],..., em[k-2], net', k', em[k-1]
+                    drop        // ma, em[0], em[1],..., em[k-2], net', k'                
+                    dup 0=
+                } until
+                                // ma, net', 0
+                drop            // ma, net'
+                swap            // net', ma
+                <s              // net', mas
+                32 u@+          // net', msgnum, mas'
+                swap            // net', mas', msgnum
+                <b              // net', mas', msgnum, b
+                swap            // net', mas', b, msgnum
+                32 u,           // net', mas', mab'
+                swap            // net', mab', mas'
+                32 i@+          // net', mab', net, mas"
+                swap drop       // net', mab', mas"
+                rot             // mas", mab', net'
+                32 i,           // mas", mab"
+                swap            // mab", mas"
+                ref@?+          // mab", mas"', em, ?
+                {               // mab", mas"', em
+                    rot         // mas"', em, mab"
+                    swap        // mas"', mab", em
+                    ref,        // mas"', mab"'
+                    swap        // mab"', mas"'
+                } if
+                s,              // mab""
+                b>              // ma'
+            }
+            {
+                                // ma, net', 0
+                drop            // ma, net'
+                swap            // net', ma
+                <s              // net', mas
+                32 u@+          // net', msgnum, mas'
+                swap            // net', mas', msgnum
+                <b              // net', mas', msgnum, b
+                swap            // net', mas', b, msgnum
+                32 u,           // net', mas', mab'
+                swap            // net', mab', mas'
+                32 i@+          // net', mab', net, mas"
+                swap drop       // net', mab', mas"
+                rot             // mas", mab', net'
+                32 i,           // mas", mab"
+                swap            // mab", mas"
+                ref@?+          // mab", mas"', em, ?
+                {               // mab", mas"', em
+                    rot         // mas"', em, mab"
+                    swap        // mas"', mab", em
+                    ref,        // mas"', mab"'
+                    swap        // mab"', mas"'
+                } if
+                s,              // mab""
+                b>              // ma'
+            }
+            cond
+        }
+        cond
+    }
+    {                           // ma, msgnum, 0, t, net, mas', 0
+        2drop 2drop 2drop       // ma
+    } 
+    cond
+} : msgXT
+
+
+// update signature mask for message envelop for given hash 
+// ( msgarray, hash, s -- msgarray') 
+{                               // ma, h, s 
+    -rot                        // s, ma, h
+    over swap                   // s, ma, ma, h
+    msg?                        // s, ma, me, ?
+    0=
+    abort"msgU: message not found"
+                                // s, ma, me
+    <s                          // s, ma, mes
+    256 u@+ swap                // s, ma, mes', h
+    rot                         // s, mes', h, ma
+    swap                        // s, mes', ma, h
+    msgX                        // s, mes', ma'
+    swap                        // s, ma', mes'
+    32 i@+                      // s, ma', t, mes"
+    ref@                        // s, ma', t, msg
+    swap                        // s, ma', msg, t
+    3 roll                      // ma', msg, t, s
+    msg&
+} : msgU
+
+
+{ dup <s csr. } : msg[]>
+
+{
+    NEWC            // k, s, b
+    ZERO SWAP       // k, s, 0, b
+    32 STU          // k, s, b'
+    2147483647 INT  // k, s, b', 2147483647
+    SWAP            // k, s, 2147483647, b'
+    32 STI         // k, s, b"
+    16 STU          // k, b"'            
+    16 STU          // b""
+    ENDC            // ma
+} : MSG[]
+
+{ DUP ONE SCHKREFSQ IF:<{ LDREF -1 INT }>ELSE<{ ZERO }> } : REF@?+
+
+{ 
+    ROT             // ma, t, s, m
+    DUP HASHCU      // ma, t, s, m, hash
+    NEWC            // ma, t, s, m, hash, b
+    256 STU         // ma, t, s, m, b'
+    STREF           // ma, t, s, b"
+    s2 PUSH         // ma, t, s, b", t
+    SWAP            // ma, t, s, t, b"
+    32 STU          // ma, t, s, b"'
+    @' keynumber STU
+                    // ma, t, b""
+    ROT             // t, b"", ma
+    NEWC            // t, b"", ma, mab
+    SWAP            // t, b"", mab, ma
+    CTOS            // t, b"", mab, mas
+    32 LDU          // t, b"", mab, msgnum, mas'
+    SWAP            // t, b"", mab, mas', msgnum
+    INC             // t, b"", mab, mas', msgnum + 1
+    ROT             // t, b"", mas', msgnum + 1, mab
+    32 STU          // t, b"", mas', mab'
+    SWAP            // t, b"", mab', mas'
+    32 LDU          // t, b"", mab', t', mas"
+    SWAP            // t, b"", mab', mas", t'
+    4 ROLL          // b"", mab', mas", t', t
+    2DUP GREATER    // b"", mab', mas", t', t, (t' > t)
+    IF:<{
+        SWAP DROP   // b"", mab', mas", t
+        ROT         // b"", mas", t, mab'
+        32 STI      // b"", mas", mab"
+    }>ELSE<{ 
+        DROP        // b"", mab', mas", t'
+        ROT         // b"", mas", t, mab'
+        32 STI      // b"", mas", mab"
+    }>
+    SWAP            // b"", mab", mas"
+    16 LDU          // b"", mab", signum, mas"'
+    SWAP ROT        // b"", mas"', signum, mab"
+    16 STU          // b"", mas"', mab"'
+    SWAP            // b"", mab"', mas"'
+    16 LDU          // b"", mab"', keynumber, mas""
+    SWAP ROT        // b"", mas"", keynumber, mab"',
+    16 STU          // b"", mas"", mab""
+    SWAP            // b"", mab"", mas""
+    REF@?+          // b"", mab"", root, mas""', ?
+    IF:<{           // b"", mab"", root, mas""'
+        SWAP        // b"", mab"", mas""', root
+        3 ROLL      // mab"", mas""', root, b""
+        STREF       // mab"", mas""', b""'
+        -ROT        // b""', mab"", mas""'
+    }>
+    SWAP            // b""', mas""', mab""
+    STSLICE         // b""', mab""'
+    SWAP            // mab""', b""'
+    ENDC            // mab""', mc
+    SWAP            // mc, mab""'
+    STREF           // mab"""
+    ENDC            // ma'
+} : MSG&
+
+
+{ 
+    ZERO                        // ma, h, 0 :=flag
+    -ROT                        // 0, ma, h
+    SWAP                        // 0, h, ma
+    CTOS                        // 0, h, mas
+    32 LDU                      // 0, h, msgnum, mas'
+    SWAP                        // 0, h, mas', msgnum .
+    DUP ISPOS
+    IF:<{ 
+        SWAP                    // 0, h, msgnum, mas'
+        PLDREF                  // 0, h, msgnum, em
+        SWAP                    // 0, h, em, msgnum := n
+        <{ 
+            DEC                 // 0, h, em, n - 1 := n'
+            SWAP DUP            // 0, h, n', em, em
+            CTOS                // 0, h, n', em, sem
+            256 LDU             // 0, h, n', em, h', sem'
+            SWAP                // 0, h, n', em, sem', h'
+            s4 PUSH             // 0, h, n', em, sem', h', h
+            EQUAL               // 0, h, n', em, sem', ?
+            IF:<{
+                DROP            // 0, h, n', em
+                3 ROLL          // h, n', em, 0
+                DROP -1 INT     // h, n', em, -1
+                3 -ROLL         // -1, h, n', em
+                SWAP            // -1, h, em, n'
+                DROP ZERO       // -1, h, em, 0
+            }>ELSE<{
+                SWAP            // 0, h, n', sem', em
+                DROP            // 0, h, n', sem'
+                LDREF           // 0, h, n', msg, sem"
+                SWAP            // 0, h, n', sem", msg
+                DROP            // 0, h, n', sem"
+                REF@?+          // 0, h, n', next_envelop := nem, sem"', ?
+                ISZERO
+                IF:<{ 
+                    2DROP ZERO  // 0, h, 0
+                    NULL        // 0, h, 0, null .
+                }>ELSE<{        // 0, h, n', nem, sem"'
+                    DROP        // 0, h, n', nem
+                }>
+                SWAP            // 0, h, nem, n'
+            }>
+            DUP ISZERO          // 0, h, nem, n', ?
+        }>UNTIL
+                                // flag, h, em | null, 0
+        DROP                    // flag, h, em | null
+        ROT                     // h, em | null, flag
+        IF:<{ SWAP DROP -1 INT }>ELSE<{ 2DROP ZERO }>
+    }>ELSE<{ 2DROP DROP ZERO }>
+} : MSG?
+
+{ 
+    ZERO                        // ma, h, 0 :=flag
+    s2 PUSH                     // ma, h, 0, ma
+    ROT SWAP                    // ma, 0, h, ma
+    CTOS                        // ma, 0, h, mas
+    32 LDU                      // ma, 0, h, msgnum, mas'
+    SWAP                        // ma, 0, h, mas', msgnum
+    3 -ROLL                     // ma, msgnum, 0, h, mas'
+    s3 PUSH                     // ma, msgnum, 0, h, mas', msgnum
+    DUP ISPOS
+    IF:<{
+        SWAP                    // ma, msgnum, 0, h, msgnum, mas'
+        PLDREF                  // ma, msgnum, 0, h, msgnum, em
+        SWAP                    // ma, msgnum, 0, h, em, msgnum := n
+        <{                      // ma, msgnum, 0, h, em, n
+            DEC                 // ma, msgnum, 0, h, em, n - 1 := n'
+            SWAP DUP            // ma, msgnum, 0, h, n', em, em
+            CTOS                // ma, msgnum, 0, h, n', em, sem
+            256 LDU             // ma, msgnum, 0, h, n', em, h', sem'
+            SWAP                // ma, msgnum, 0, h, n', em, sem', h'
+            s4 PUSH             // ma, msgnum, 0, h, n', em, sem', h', h
+            EQUAL               // ma, msgnum, 0, h, n', em, sem', ?
+            IF:<{ 
+                DROP            // ma, msgnum, 0, h, n', em
+                3 ROLL          // ma, msgnum, h, n', em, 0
+                DROP -1 INT     // ma, msgnum, h, n', em, -1
+                3 -ROLL         // ma, msgnum, -1, h, n', em
+                SWAP            // ma, msgnum, -1, h, em, n'
+                4 ROLL          // ma, -1, h, em, n', msgnum
+                SWAP            // ma, -1, h, em, msgnum, n'
+                SUB             // ma, -1, h, em, msgnum - n'
+                DEC             // ma, -1, h, em, msgnum - n' - 1 := msgnum'
+                ZERO            // ma, -1, h, em, msgnum', 0
+                SWAP            // ma, -1, h, em, 0, msgnum'
+                4 -ROLL         // ma, msgnum', -1, h, em, 0
+            }>ELSE<{
+                SWAP            // ma, msgnum, 0, h, n', sem', em
+                5 -ROLL         // ma, em, msgnum, 0, h, n', sem'
+                LDREF           // ma, em, msgnum, 0, h, n', msg, sem"
+                SWAP DROP       // ma, em, msgnum, 0, h, n', sem"
+                REF@?+          // ma, em, msgnum, 0, h, n', next_envelop := nem, sem"', ?
+                ISZERO          // ma, em, msgnum, 0, h, n', nem, sem"',  ?' 
+                IF:<{           // ma, em, msgnum, 0, h, n', sem"'
+                    2DROP ZERO  // ma, em, msgnum, 0, h, 0
+                    NULL        // ma, em, msgnum, 0, h, 0, null
+                }>ELSE<{        // ma, em, msgnum, 0, h, n', nem, sem"'
+                    DROP        // ma, em, msgnum, 0, h, n', nem
+                }>
+                SWAP            // ma, em, msgnum, 0, h, nem, n'
+            }>
+            DUP ISZERO
+        }>UNTIL
+                                // ma, em[0], em[1],..., em[k-1], msgnum, flag, h, em | null, 0
+        DROP                    // ma, em[0], em[1],..., em[k-1], msgnum, flag, h, em | null
+        ROT                     // ma, em[0], em[1],..., em[k-1], msgnum, h, em | null, flag
+        IF:<{                   // found and need to delete
+            SWAP                // ma, em[0], em[1],..., em[k-1], msgnum, em, h
+            DROP                // ma, em[0], em[1],..., em[k-1], msgnum, em
+            SWAP                // ma, em[0], em[1],..., em[k-1], em, msgnum := k
+            DUP ISPOS           // ma, em[0], em[1],..., em[k-1], em, k, ?
+            IF:<{
+                -ROT            // ma, em[0], em[1],..., k, em[k-1], em
+                CTOS            // ma, em[0], em[1],..., k, em[k-1], sem
+                LDREF           // ma, em[0], em[1],..., k, em[k-1], msg, sem'
+                SWAP DROP       // ma, em[0], em[1],..., k, em[k-1], sem'
+                REF@?+          // ma, em[0], em[1],..., k, em[k-1], next_envelop := nem, sem", ?
+                IF:<{           // ma, em[0], em[1],..., k, em[k-1], nem, sem"
+                    DROP        // ma, em[0], em[1],..., k, em[k-1], nem
+                    SWAP        // ma, em[0], em[1],..., k, nem, em[k-1]
+                    CTOS        // ma, em[0], em[1],..., k, nem, sem[k-1]
+                    NEWC        // ma, em[0], em[1],..., k, nem, sem[k-1], b
+                    SWAP        // ma, em[0], em[1],..., k, nem, b, sem[k-1]
+                    LDREF SWAP  // ma, em[0], em[1],..., k, nem, b, sem[k-1]', msg
+                    ROT         // ma, em[0], em[1],..., k, nem, sem[k-1]', msg, b
+                    STREF       // ma, em[0], em[1],..., k, nem, sem[k-1]', b'
+                    SWAP        // ma, em[0], em[1],..., k, nem, b', sem[k-1]'
+                    LDREF       // ma, em[0], em[1],..., k, nem, b', em, sem[k-1]"
+                    SWAP DROP   // ma, em[0], em[1],..., k, nem, b', sem[k-1]"
+                    SWAP        // ma, em[0], em[1],..., k, nem, sem[k-1]", b'
+                    STSLICE     // ma, em[0], em[1],..., k, nem, b"
+                    STREF       // ma, em[0], em[1],..., k, b"'
+                    ENDC        // ma, em[0], em[1],..., k, em[k-1]'
+                    SWAP        // ma, em[0], em[1],..., em[k-1]', k
+                }>ELSE<{        // ma, em[0], em[1],..., k, em[k-1], sem"
+                    DROP        // ma, em[0], em[1],..., k, em[k-1]
+                    CTOS        // ma, em[0], em[1],..., k, sem[k-1]
+                    NEWC        // ma, em[0], em[1],..., k, sem[k-1], b
+                    SWAP        // ma, em[0], em[1],..., k, b, sem[k-1]
+                    LDREF SWAP  // ma, em[0], em[1],..., k, b, sem[k-1]', msg
+                    ROT         // ma, em[0], em[1],..., k, sem[k-1]', msg, b
+                    STREF       // ma, em[0], em[1],..., k, sem[k-1]', b'
+                    SWAP        // ma, em[0], em[1],..., k, b', sem[k-1]'
+                    LDREF SWAP  // ma, em[0], em[1],..., k, b', sem[k-1]", em
+                    DROP SWAP   // ma, em[0], em[1],..., k, sem[k-1]", b'
+                    STSLICE     // ma, em[0], em[1],..., k, b"
+                    ENDC        // ma, em[0], em[1],..., k, em[k-1]'
+                    SWAP        // ma, em[0], em[1],..., em[k-1]', k
+                }>
+                DUP ONE GREATER
+                IF:<{
+                    <{          // ma, em[0], em[1],..., em[k-1]', k
+                        DEC     // ma, em[0], em[1],..., em[k-1]', k-1 := k'
+                        -ROT    // ma, em[0], em[1],..., k', em[k-2], em[k-1]'
+                        SWAP    // ma, em[0], em[1],..., k', em[k-1]', em[k-2]
+                        CTOS    // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]
+                        LDREF   // ma, em[0], em[1],..., k', em[k-1]', msg, sem[k-2]'
+                        SWAP    // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]', msg
+                        NEWC    // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]', msg, b
+                        STREF   // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]', b'
+                        SWAP    // ma, em[0], em[1],..., k', em[k-1]', b', sem[k-2]'
+                        REF@?+  // ma, em[0], em[1],..., k', em[k-1]', b', nem, sem[k-2]" ?
+                        IF:<{ SWAP DROP }>
+                        SWAP    // ma, em[0], em[1],..., k', em[k-1]', sem[k-2]",  b'
+                        STSLICE // ma, em[0], em[1],..., k', em[k-1]', b"
+                        STREF   // ma, em[0], em[1],..., k', b"'
+                        ENDC    // ma, em[0], em[1],..., k', em[k-2]'
+                        SWAP    // ma, em[0], em[1],..., em[k-2]', k
+                        DUP ONE EQUAL
+                    }>UNTIL
+                }>
+                                // ma, em[0]', 1
+                DROP            // ma, em[0]'
+                SWAP            // em[0]', ma
+                CTOS            // em[0]', mas
+                LDREF           // em[0]', em, mas'
+                SWAP DROP       // em[0]', mas'
+                NEWC            // em[0]', mas', mab
+                SWAP            // em[0]', mab, mas'
+                32 LDU SWAP     // em[0]', mab, mas", msgnum
+                DEC             // em[0]', mab, mas", msgnum - 1
+                ROT             // em[0]', mas", msgnum - 1, mab
+                32 STU          // em[0]', mas", mab'
+                STSLICE         // em[0]', mab"
+                STREF           // mab"'
+                ENDC            // ma'
+            }>ELSE<{
+                                // ma, em, 0
+                DROP            // ma, em
+                CTOS            // ma, sem
+                LDREF           // ma, sem', msg
+                SWAP DROP       // ma, sem'
+                REF@?+          // ma, next_envelop := nem, sem" ?
+                IF:<{           // ma, nem, sem"
+                    DROP        // ma, nem
+                    SWAP        // nem, ma
+                    CTOS        // nem, mas
+                    LDREF       // nem, em, mas'
+                    SWAP DROP   // nem, mas'
+                    NEWC        // nem, mas', mab
+                    SWAP        // nem, mab, mas'
+                    32 LDU SWAP // nem, mab, mas", msgnum
+                    DEC         // nem, mab, mas", msgnum - 1
+                    ROT         // nem, mas", msgnum - 1, mab
+                    32 STU      // nem, mas", mab'
+                    STSLICE     // nem, mab"
+                    STREF       // mab"'
+                    ENDC        // ma'
+                }>ELSE<{        // ma, sem"
+                    DROP        // ma
+                    NEWC        // ma, mab
+                    SWAP        // mab, ma
+                    CTOS        // mab, mas
+                    LDREF       // mab, em, mas'
+                    SWAP DROP   // mab, mas'
+                    32 LDU SWAP // mab, mas", msgnum
+                    DEC         // mab, mas", msgnum - 1
+                    ROT         // mas", msgnum - 1, mab
+                    32 STU      // mas", mab'
+                    SWAP        // mab', mas"
+                    32 LDU SWAP // mab', mas"', net
+                    DROP        // mab', mas"'
+                    SWAP        // mas"', mab'
+                    2147483647 INT
+                                // mas"', mab', 2147483647
+                    SWAP        // mas"', 2147483647, mab'
+                    32 STU      // mas"', mab"
+                    STSLICE     // mab" 
+                    ENDC        // ma'
+                }>
+            }>
+        }>ELSE<{                // not found clean the stack
+            2DROP               // ma, em[0], em[1],..., em[k-1], msgnum := k
+            DUP ISPOS           // ma, em[0], em[1],..., em[k-1], k, ?
+            IF:<{
+                <{              // ma, em[0], em[1],..., em[k-1], k
+                    DEC         // ma, em[0], em[1],..., em[k-1], k-1
+                    SWAP        // ma, em[0], em[1],..., k-1, em[k-1]
+                    DROP        // ma, em[0], em[1],..., k-1
+                    DUP ISZERO
+                }>UNTIL
+                                // ma, 0
+                DROP            // ma
+            }>
+        }>
+    }>ELSE<{ 2DROP 2DROP DROP }>
+} : MSGX
+
+{ 
+    ZERO                        // ma, t, 0 :=f
+    s2 PUSH                     // ma, t, 0, ma
+    ROT SWAP                    // ma, 0, t, ma
+    CTOS                        // ma, 0, t, mas
+    32 LDU                      // ma, 0, t, msgnum, mas'
+    SWAP                        // ma, 0, t, mas', msgnum
+    3 -ROLL                     // ma, msgnum, 0, t, mas'
+    2147483647 INT              // ms, msgnum, 0, t, mas', maxnet := net
+    SWAP                        // ms, msgnum, 0, t, net, mas'
+    s4 PUSH                      // ma, msgnum, 0, t, net, mas', msgnum
+    DUP ISPOS
+    IF:<{
+        SWAP                    // ma, msgnum, 0, t, net, msgnum, mas'
+        PLDREF                  // ma, msgnum, 0, t, net, msgnum, em
+        SWAP                    // ma, msgnum, 0, t, net, em, msgnum := n
+        <{  DEC                 // ma, msgnum, 0, t, net, em, n - 1 := n'
+            SWAP DUP            // ma, msgnum, 0, t, net, n', em, em
+            CTOS                // ma, msgnum, 0, t, net, n', em, sem
+            256 LDU SWAP DROP   // ma, msgnum, 0, t, net, n', em, sem'
+            32 LDU SWAP         // ma, msgnum, 0, t, net, n', em, sem", t'
+            s5 PUSH             // ma, msgnum, 0, t, net, n', em, sem", t', t
+            OVER                // ma, msgnum, 0, t, net, n', em, sem", t', t, t'
+            GREATER             // ma, msgnum, 0, t, net, n', em, sem", t', ?
+            IF:<{               // delete this message bacause msg expiry time t' < t 
+                DROP            // ma, msgnum, 0, t, net, n', em, sem"
+                SWAP DROP       // ma, msgnum, 0, t, net, n', sem"
+                5 ROLL          // ma, 0, t, net, n', sem", msgnum
+                DEC             // ma, 0, t, net, n', sem", msgnum - 1 := msgnum'
+                5 -ROLL         // ma, msgnum', 0, t, net, n', sem"
+                4 ROLL          // ma, msgnum', t, net, n', sem", 0
+                DROP -1 INT     // ma, msgnum', t, net, n', sem", -1 := f'
+                4 -ROLL         // ma, msgnum', f', t, net, n', sem"
+            }>ELSE<{            // keep this message in the array
+                                // ma, msgnum, 0, t, net, n', em, sem", t'
+                4 ROLL          // ma, msgnum, 0, t, n', em, sem", t', net
+                2DUP LESS       // ma, msgnum, 0, t, n', em, sem", t', net, ?
+                IF:<{
+                    DROP DUP    // ma, msgnum, 0, t, n', em, sem", t', t' := net'
+                }>
+                4 -ROLL         // ma, msgnum, 0, t, net', n', em, sem", t'
+                ROT             // ma, msgnum, 0, t, net', n', sem", t', em
+                7 -ROLL         // ma, em, msgnum, 0, t, net', n', sem", t'
+                DROP            // ma, em, msgnum, 0, t, net', n', sem"
+            }>
+                                // ma, em, msgnum', f', t, net', n', sem"
+            LDREF SWAP DROP     // ma, em, msgnum', f', t, net', n', sem"'
+            REF@?+              // ma, em, msgnum', f', t, net', n', nem, sem"", ?
+            ISZERO              // ma, em, msgnum', f', t, net', n', nem, sem"", ?'
+            IF:<{               // ma, em, msgnum', f', t, net', n', sem""
+                2DROP ZERO      // ma, em, msgnum', f', t, net', 0
+                NULL            // ma, em, msgnum', f', t, net', 0, null
+            }>ELSE<{            // ma, em, msgnum', f', t, net', n', nem, sem""
+                DROP            // ma, em, msgnum', f', t, net', n', nem
+            }>        
+                                // ma, em, msgnum', f', t, net', n', nem | null := em'
+                                // MUST BE: ma, msgnum, f, t, net, em, n
+            SWAP                // ma, em, msgnum', f', t, net', em', n'
+            DUP ISZERO
+        }>UNTIL
+                                // ma, em[0], em[1],..., em[k-1], k, f', t, net', null, 0
+        2DROP                   // ma, em[0], em[1],..., em[k-1], k, f', t, net'
+        ROT                     // ma, em[0], em[1],..., em[k-1], k, t, net', f'
+        IF:<{                   // need to rebuild the array
+                                // ma, em[0], em[1],..., em[k-1], k, t, net'
+            SWAP DROP SWAP      // ma, em[0], em[1],..., em[k-1], net', k
+            DUP ISPOS           // ma, em[0], em[1],..., em[k-1], net', k, ?
+            IF:<{ 
+                ROT             // ma, em[0], em[1],..., net', k, em[k-1]
+                CTOS            // ma, em[0], em[1],..., net', k, sem[k-1]
+                LDREF SWAP      // ma, em[0], em[1],..., net', k, sem[k-1]', msg
+                NEWC            // ma, em[0], em[1],..., net', k, sem[k-1]', msg, b
+                STREF           // ma, em[0], em[1],..., net', k, sem[k-1]', b'
+                SWAP            // ma, em[0], em[1],..., net', k, b, sem[k-1]'
+                REF@?+          // ma, em[0], em[1],..., net', k, b, nem, sem[k-1]", ?
+                IF:<{           // ma, em[0], em[1],..., net', k, b, nem, sem[k-1]"
+                    SWAP DROP   // ma, em[0], em[1],..., net', k, b, sem[k-1]"
+                }>
+                SWAP            // ma, em[0], em[1],..., net', k, sem[k-1]", b
+                STSLICE         // ma, em[0], em[1],..., net', k, b'
+                ENDC            // ma, em[0], em[1],..., net', k, em[k-1]'
+                -ROT            // ma, em[0], em[1],..., em[k-1]', net', k
+                DUP ONE GREATER
+                IF:<{ 
+                    DUP         // ma, em[0], em[1],..., em[k-1]', net', k, k
+                    <{ 
+                        DEC     // ma, em[0], em[1],..., em[k-2], em[k-1]', net', k, k-1 := k'
+                                // ma, em[0], em[1],..., em[k-2], em[k-1]', net', k, k'
+                        4 ROLL  // ma, em[0], em[1],..., em[k-1]', net', k, k', em[k-2]
+                        CTOS    // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]
+                        LDREF   // ma, em[0], em[1],..., em[k-1]', net', k, k', msg, sem[k-2]'
+                        SWAP    // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', msg
+                        NEWC    // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', msg, b
+                        STREF   // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', b'
+                        SWAP    // ma, em[0], em[1],..., em[k-1]', net', k, k', b', sem[k-2]'
+                        REF@?+  // ma, em[0], em[1],..., em[k-1]', net', k, k', b', nem, sem[k-2]", ?
+                        IF:<{ SWAP DROP }>
+                        SWAP    // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]", b'
+                        STSLICE // ma, em[0], em[1],..., em[k-1]', net', k, k', b"
+                        4 ROLL  // ma, em[0], em[1],..., net', k, k', b", em[k-1]'
+                        SWAP    // ma, em[0], em[1],..., net', k, k', em[k-1]', b"
+                        STREF   // ma, em[0], em[1],..., net', k, k', b"'
+                        ENDC    // ma, em[0], em[1],..., net', k, k', em[k-2]'
+                        3 -ROLL // ma, em[0], em[1],..., em[k-2]', net', k, k'
+
+                        DUP ONE EQUAL
+                    }>UNTIL
+                                // ma, em[0]', net', k, 1
+                    DROP        // ma, em[0]', net', k
+                    3 ROLL      // em[0], net', 1, ma
+                    CTOS        // em[0], net', 1, mas
+                    32 LDU      // em[0], net', 1, msgnum, mas'
+                    SWAP DROP   // em[0], net', 1, mas'
+                    NEWC        // em[0], net', 1, mas', mab
+                    ROT SWAP    // em[0], net', mas', 1, mab
+                    32 STU      // em[0], net', mas', mab'
+                    SWAP        // em[0], net', mab', mas'
+                    32 LDU      // em[0], net', mab', net, mas"
+                    SWAP DROP   // em[0], net', mab', mas"
+                    SWAP        // em[0], net', mas", mab'
+                    ROT SWAP    // em[0], mas", net, mab'
+                    32 STI      // em[0], mas", mab"
+                    SWAP        // em[0], mab", mas"
+                    REF@?+      // em[0], mab", em, mas"', ?
+                    IF:<{ SWAP DROP }>
+                    SWAP        // em[0], mas"', mab"
+                    ROT SWAP    // mas"', em[0], mab"
+                    STREF       // mas"', mab"'
+                    STSLICE     // mab""
+                    ENDC        // ma'
+                }>ELSE<{ 
+                                // ma, em[0], net', 1
+                    3 ROLL      // em[0], net', 1, ma
+                    CTOS        // em[0], net', 1, mas
+                    32 LDU      // em[0], net', 1, msgnum, mas'
+                    SWAP DROP   // em[0], net', 1, mas'
+                    NEWC        // em[0], net', 1, mas', mab
+                    ROT SWAP    // em[0], net', mas', 1, mab
+                    32 STU      // em[0], net', mas', mab'
+                    SWAP        // em[0], net', mab', mas'
+                    32 LDU      // em[0], net', mab', net, mas"
+                    SWAP DROP   // em[0], net', mab', mas"
+                    SWAP        // em[0], net', mas", mab'
+                    ROT SWAP    // em[0], mas", net, mab'
+                    32 STI      // em[0], mas", mab"
+                    SWAP        // em[0], mab", mas"
+                    REF@?+      // em[0], mab", em,  mas"', ?
+                    IF:<{ SWAP DROP }>
+                    SWAP        // em[0], mas"', mab"
+                    ROT SWAP    // mas"', em[0], mab"
+                    STREF       // mas"', mab"'
+                    STSLICE     // mab""
+                    ENDC        // ma'
+                }>
+
+            }>ELSE<{
+                                // ma, net', 0
+                DROP            // ma, net'
+                SWAP            // net', ma
+                CTOS            // net', mas
+                32 LDU          // net', msgnum, mas'
+                SWAP DROP ZERO  // net', mas', 0
+                NEWC            // net', mas', 0, mab
+                32 STU          // net', mas', mab'
+                SWAP            // net', mab', mas'
+                32 LDU          // net', mab', net, mas"
+                SWAP DROP       // net', mab', mas"
+                SWAP            // net', mas", mab'
+                ROT SWAP        // mas", net', mab'
+                32 STI          // mas", mab"
+                SWAP            // mab", mas"
+                REF@?+          // mab", em, mas"', ?
+                IF:<{ SWAP DROP }>
+                SWAP            // mas"', mab"
+                STSLICE         // mab"'
+                ENDC            // ma'
+            }>
+            
+        }>ELSE<{
+                                // nothing to change except 'net' clean the stack
+                                // ma, em[0], em[1],..., em[k-1], k, t, net
+            SWAP DROP SWAP      // ma, em[0], em[1],..., em[k-1], net', k
+            DUP ISPOS           // ma, em[0], em[1],..., em[k-1], net', k, ?
+            IF:<{ 
+                <{   
+                    DEC         // ma, em[0], em[1],..., em[k-1], net', k - 1 := k'
+                    ROT         // ma, em[0], em[1],..., em[k-2], net', k', em[k-1]
+                    DROP        // ma, em[0], em[1],..., em[k-2], net', k'                
+                    DUP ISZERO
+                }>UNTIL
+                                // ma, net', 0
+                DROP            // ma, net'
+                SWAP            // net', ma
+                CTOS            // net', mas
+                32 LDU          // net', msgnum, mas'
+                SWAP            // net', mas', msgnum
+                NEWC            // net', mas', msgnum, b
+                32 STU          // net', mas', mab'
+                SWAP            // net', mab', mas'
+                32 LDU          // net', mab', net, mas"
+                SWAP DROP       // net', mab', mas"
+                ROT SWAP        // mas", net', mab'
+                32 STI          // mas", mab"
+                SWAP            // mab", mas"
+                REF@?+          // mab", em, mas"', ?
+                IF:<{           // mab", em, mas"',
+                    SWAP        // mab", mas"', em
+                    ROT         // mas"', em, mab"
+                    STREF       // mas"', mab"'
+                    SWAP        // mab"', mas"'
+                }>
+                SWAP            // mas"', mab"'
+                STSLICE         // mab""
+                ENDC            // ma'
+            }>ELSE<{
+                                // ma, net', 0
+                DROP            // ma, net'
+                SWAP            // net', ma
+                CTOS            // net', mas
+                32 LDU          // net', msgnum, mas'
+                SWAP            // net', mas', msgnum
+                NEWC            // net', mas', msgnum, b
+                32 STU          // net', mas', mab'
+                SWAP            // net', mab', mas'
+                32 LDU          // net', mab', net, mas"
+                SWAP DROP       // net', mab', mas"
+                ROT SWAP        // mas", net', mab'
+                32 STI          // mas", mab"
+                SWAP            // mab", mas"
+                REF@?+          // mab", em, mas"', ?
+                IF:<{               // mab", em, mas"'
+                    SWAP        // mab", mas"', em
+                    ROT         // mas"', em, mab"
+                    STREF       // mas"', mab"'
+                    SWAP        // mab"', mas"'
+                }>
+                SWAP            // mas"', mab"'
+                STSLICE         // mab""
+                ENDC            // ma'
+            }>
+        }>
+
+    }>ELSE<{                    // ma, msgnum, 0, t, net, mas', 0
+        2DROP 2DROP 2DROP       // ma
+    }>
+} : MSGXT
+
+{
+    -ROT                        // s, ma, h
+    OVER SWAP                   // s, ma, ma, h
+    MSG?                        // s, ma, me, ?
+    ISZERO
+    64 THROWIF
+                                // s, ma, me
+    CTOS                        // s, ma, mes
+    256 LDU SWAP                // s, ma, mes', h
+    ROT                         // s, mes', h, ma
+    SWAP                        // s, mes', ma, h
+    MSGX                        // s, mes', ma'
+    SWAP                        // s, ma', mes'
+    32 LDU                      // s, ma', t, mes"
+    PLDREF                      // s, ma', t, msg
+    SWAP                        // s, ma', msg, t
+    3 ROLL                      // ma', msg, t, s
+    MSG&
+} : MSGU
+
+
+{ CTOS PLDREF } : MSG@
+
+// select messages from the array for given keyindex and selector = { true | false } and return selected messages array
+// ( msgarray, i, s -- msgarray') 
+{
+                                // ma, i, s
+    =: selector                 // ma, i
+    1 swap <<                   // ma, msk
+    @' selector                 // ma, msk, selector
+    { 0 =: selector }
+    { dup =: selector } cond    
+    0                           // ma, msk, 0 :=f
+    2 pick                      // ma, msk, 0, ma
+    rot swap                    // ma, 0, msk, ma
+    <s                          // ma, 0, msk, mas
+    32 u@+                      // ma, 0, msk, msgnum, mas'
+    swap                        // ma, 0, msk, mas', msgnum
+    3 -roll                     // ma, msgnum, 0, msk, mas'
+    2147483647                  // ms, msgnum, 0, msk, mas', maxnet := net
+    swap                        // ms, msgnum, 0, msk, net, mas'
+    4 pick                      // ma, msgnum, 0, msk, net, mas', msgnum
+    dup 0>
+    {
+        swap                    // ma, msgnum, 0, msk, net, msgnum, mas'
+        ref@                    // ma, msgnum, 0, msk, net, msgnum, em
+        swap                    // ma, msgnum, 0, msk, net, em, msgnum := n 
+        {                       // ma, msgnum, 0, msk, net, em, n
+            1-                  // ma, msgnum, 0, msk, net, em, n - 1 := n'
+            swap dup            // ma, msgnum, 0, msk, net, n', em, em
+            <s                  // ma, msgnum, 0, msk, net, n', em, sem
+            256 u@+ swap drop   // ma, msgnum, 0, msk, net, n', em, sem'
+            32 i@+              // ma, msgnum, 0, msk, net, n', em, t', sem"
+            @' keynumber u@+    // ma, msgnum, 0, msk, net, n', em, t', msk', sem"'
+            swap                // ma, msgnum, 0, msk, net, n', em, t', sem"', msk'
+            6 pick              // ma, msgnum, 0, msk, net, n', em, t', sem"', msk', msk
+            and                 // ma, msgnum, 0, msk, net, n', em, t', sem"', msh' & msk
+            @' selector         // ma, msgnum, 0, msk, net, n', em, t', sem"', msh' & msk, selector
+            xor                 // ma, msgnum, 0, msk, net, n', em, t', sem"', msh' & msk xor selector
+            0=                  // ma, msgnum, 0, msk, net, n', em, t', sem"', ?
+            {                   // delete this message from the result
+                swap drop       // ma, msgnum, 0, msk, net, n', em, sem"'
+                swap drop       // ma, msgnum, 0, msk, net, n', sem"'
+                5 roll          // ma, 0, msk, net, n', sem"', msgnum
+                1-              // ma, 0, msk, net, n', sem"', msgnum - 1 := msgnum'
+                5 -roll         // ma, msgnum', 0, msk, net, n', sem"'
+                4 roll          // ma, msgnum', msk, net, n', sem"', 0
+                drop -1         // ma, msgnum', msk, net, n', sem"', -1 := f'
+                4 -roll         // ma, msgnum', f', msk, net, n', sem"'
+            }
+            {                   // keep this message in the result
+                swap            // ma, msgnum, 0, msk, net, n', em, sem"', t'
+                4 roll          // ma, msgnum, 0, msk, n', em, sem"', t', net
+                2dup <          // ma, msgnum, 0, msk, n', em, sem"', t', net, ?
+                {
+                    drop dup    // ma, msgnum, 0, msk, n', em, sem"', t', t' := net'
+                } if
+                4 -roll         // ma, msgnum, 0, msk, net', n', em, sem"', t'
+                rot             // ma, msgnum, 0, msk, net', n', sem"', t', em
+                7 -roll         // ma, em, msgnum, 0, msk, net', n', sem"', t'
+                drop            // ma, em, msgnum, 0, msk, net', n', sem"'
+            }
+            cond
+                                // ma, em, msgnum', f', msk, net', n', sem"'
+            ref@+ drop          // ma, em, msgnum', f', msk, net', n', sem""
+            ref@?+              // ma, em, msgnum', f', msk, net', n', sem""', nem, ?
+            0=                  // ma, em, msgnum', f', msk, net', n', sem""', nem, ?'
+            {
+                2drop 0         // ma, em, msgnum', f', msk, net', 0
+                null            // ma, em, msgnum', f', msk, net', 0, null
+            }
+            {
+                swap            // ma, em, msgnum', f', msk, net', n', nem, sem""'
+                drop            // ma, em, msgnum', f', t, net', n', nem
+            }
+            cond         
+                                // ma, em, msgnum', f', msk, net', n', nem | null := em'
+                                // MUST BE: ma, msgnum, f, msk, net, em, n
+            swap                // ma, em, msgnum', f', msk, net', em', n'
+            dup 0=
+        } until
+                                // ma, em[0], em[1],..., em[k-1], k, f', msk, net', null, 0
+        2drop                   // ma, em[0], em[1],..., em[k-1], k, f', msk, net'
+        rot                     // ma, em[0], em[1],..., em[k-1], k, msk, net', f'
+        {                       // need to rebuild the array
+                                // ma, em[0], em[1],..., em[k-1], k, msk, net'
+            swap drop swap      // ma, em[0], em[1],..., em[k-1], net', k
+            dup 0>              // ma, em[0], em[1],..., em[k-1], net', k, ?
+            {                   // ma, em[0], em[1],..., em[k-1], net', k
+                rot             // ma, em[0], em[1],..., net', k, em[k-1]
+                <s              // ma, em[0], em[1],..., net', k, sem[k-1]
+                ref@+           // ma, em[0], em[1],..., net', k, sem[k-1]', msg
+                <b              // ma, em[0], em[1],..., net', k, sem[k-1]', msg, b
+                swap            // ma, em[0], em[1],..., net', k, sem[k-1]', b, msg
+                ref,            // ma, em[0], em[1],..., net', k, sem[k-1]', b'
+                swap            // ma, em[0], em[1],..., net', k, b, sem[k-1]'
+                ref@?+          // ma, em[0], em[1],..., net', k, b, sem[k-1]", nem, ?
+                {
+                    drop        // ma, em[0], em[1],..., net', k, b, sem[k-1]"
+                } if
+                s,              // ma, em[0], em[1],..., net', k, b'
+                b>              // ma, em[0], em[1],..., net', k, em[k-1]'
+                -rot            // ma, em[0], em[1],..., em[k-1]', net', k
+                dup 1 >
+                {
+                    dup         // ma, em[0], em[1],..., em[k-1]', net', k, k
+                    {
+                        1-      // ma, em[0], em[1],..., em[k-2], em[k-1]', net', k, k-1 := k'
+                                // ma, em[0], em[1],..., em[k-2], em[k-1]', net', k, k'
+                        4 roll  // ma, em[0], em[1],..., em[k-1]', net', k, k', em[k-2]
+                        <s      // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]
+                        ref@+   // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', msg
+                        <b      // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', msg, b
+                        swap    // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', b, msg
+                        ref,    // ma, em[0], em[1],..., em[k-1]', net', k, k', sem[k-2]', b'
+                        swap    // ma, em[0], em[1],..., em[k-1]', net', k, k', b', sem[k-2]'
+                        ref@?+  // ma, em[0], em[1],..., em[k-1]', net', k, k', b', sem[k-2]", nem, ?
+                        {
+                            drop
+                        } if
+                                // ma, em[0], em[1],..., em[k-1]', net', k, k', b', sem[k-2]"
+                        s,      // ma, em[0], em[1],..., em[k-1]', net', k, k', b"
+                        4 roll  // ma, em[0], em[1],..., net', k, k', b", em[k-1]'
+                        ref,    // ma, em[0], em[1],..., net', k, k', b"'
+                        b>      // ma, em[0], em[1],..., net', k, k', em[k-2]'
+                        3 -roll // ma, em[0], em[1],..., em[k-2]', net', k, k'
+
+                        dup 1 =
+                    } until
+                                // ma, em[0]', net', k, 1
+                    drop        // ma, em[0]', net', k
+                    3 roll      // em[0], net', 1, ma
+                    <s          // em[0], net', 1, mas
+                    32 u@+      // em[0], net', 1, msgnum, mas'
+                    swap drop   // em[0], net', 1, mas'
+                    <b          // em[0], net', 1, mas', mab
+                    rot         // em[0], net', mas', mab, 1
+                    32 u,       // em[0], net', mas', mab'
+                    swap        // em[0], net', mab', mas'
+                    32 i@+      // em[0], net', mab', net, mas"
+                    swap drop   // em[0], net', mab', mas"
+                    swap        // em[0], net', mas", mab'
+                    rot         // em[0], mas", mab', net
+                    32 i,       // em[0], mas", mab"
+                    swap        // em[0], mab", mas"
+                    ref@?+      // em[0], mab", mas"', em, ?
+                    {
+                        drop    // em[0], mab", mas"'
+                    } if
+                    swap        // em[0], mas"', mab"
+                    rot         // mas"', mab", em[0]
+                    ref,        // mas"', mab"'
+                    swap        // mab"', mas"'
+                    s,          // mab""
+                    b>          // ma'
+                }
+                {
+                                // ma, em[0], net', 1
+                    3 roll      // em[0], net', 1, ma
+                    <s          // em[0], net', 1, mas
+                    32 u@+      // em[0], net', 1, msgnum, mas'
+                    swap drop   // em[0], net', 1, mas'
+                    <b          // em[0], net', 1, mas', mab
+                    rot         // em[0], net', mas', mab, 1
+                    32 u,       // em[0], net', mas', mab'
+                    swap        // em[0], net', mab', mas'
+                    32 i@+      // em[0], net', mab', net, mas"
+                    swap drop   // em[0], net', mab', mas"
+                    swap        // em[0], net', mas", mab'
+                    rot         // em[0], mas", mab', net
+                    32 i,       // em[0], mas", mab"
+                    swap        // em[0], mab", mas"
+                    ref@?+      // em[0], mab", mas"', em, ?
+                    {
+                        drop    // em[0], mab", mas"'
+                    } if
+                    swap        // em[0], mas"', mab"
+                    rot         // mas"', mab", em[0]
+                    ref,        // mas"', mab"'
+                    swap        // mab"', mas"'
+                    s,          // mab""
+                    b>          // ma'
+                }
+                cond
+                                
+            }
+            {                   // ma, net', 0
+                drop            // ma, net'
+                swap            // net', ma
+                <s              // net', mas
+                32 u@+          // net', msgnum, mas'
+                swap drop 0     // net', mas', 0
+                <b              // net', mas', 0, mab
+                swap            // net', mas', mab, 0
+                32 u,           // net', mas', mab'
+                swap            // net', mab', mas'
+                32 i@+          // net', mab', net, mas"
+                swap drop       // net', mab', mas"
+                swap            // net', mas", mab'
+                rot             // mas", mab', net'
+                32 i,           // mas", mab"
+                swap            // mab", mas"
+                ref@?+          // mab", mas"', em, ?
+                {
+                    drop        // mab", mas"'
+                } if
+                s,              // mab"'
+                b>              // ma'
+            }
+            cond
+        }
+        {                       // nothing to change except 'net' clean the stack
+                                // ma, em[0], em[1],..., em[k-1], k, t, net
+            swap drop swap      // ma, em[0], em[1],..., em[k-1], net', k
+            dup 0>              // ma, em[0], em[1],..., em[k-1], net', k, ?
+            {
+                {   
+                    1-          // ma, em[0], em[1],..., em[k-1], net', k - 1 := k'
+                    rot         // ma, em[0], em[1],..., em[k-2], net', k', em[k-1]
+                    drop        // ma, em[0], em[1],..., em[k-2], net', k'                
+                    dup 0=
+                } until
+                                // ma, net', 0
+                drop            // ma, net'
+                swap            // net', ma
+                <s              // net', mas
+                32 u@+          // net', msgnum, mas'
+                swap            // net', mas', msgnum
+                <b              // net', mas', msgnum, b
+                swap            // net', mas', b, msgnum
+                32 u,           // net', mas', mab'
+                swap            // net', mab', mas'
+                32 i@+          // net', mab', net, mas"
+                swap drop       // net', mab', mas"
+                rot             // mas", mab', net'
+                32 i,           // mas", mab"
+                swap            // mab", mas"
+                ref@?+          // mab", mas"', em, ?
+                {               // mab", mas"', em
+                    rot         // mas"', em, mab"
+                    swap        // mas"', mab", em
+                    ref,        // mas"', mab"'
+                    swap        // mab"', mas"'
+                } if
+                s,              // mab""
+                b>              // ma'
+            }
+            {
+                                // ma, net', 0
+                drop            // ma, net'
+                swap            // net', ma
+                <s              // net', mas
+                32 u@+          // net', msgnum, mas'
+                swap            // net', mas', msgnum
+                <b              // net', mas', msgnum, b
+                swap            // net', mas', b, msgnum
+                32 u,           // net', mas', mab'
+                swap            // net', mab', mas'
+                32 i@+          // net', mab', net, mas"
+                swap drop       // net', mab', mas"
+                rot             // mas", mab', net'
+                32 i,           // mas", mab"
+                swap            // mab", mas"
+                ref@?+          // mab", mas"', em, ?
+                {               // mab", mas"', em
+                    rot         // mas"', em, mab"
+                    swap        // mas"', mab", em
+                    ref,        // mas"', mab"'
+                    swap        // mab"', mas"'
+                } if
+                s,              // mab""
+                b>              // ma'
+            }
+            cond
+        }
+        cond
+    }
+    {                           // ma, msgnum, 0, t, net, mas', 0
+        2drop 2drop 2drop       // ma
+    } 
+    cond
+} : msgSEL
+
+
+
+
+
+
+
+
+
+
+

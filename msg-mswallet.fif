@@ -1,0 +1,54 @@
+#!/usr/bin/env fift -s
+
+// Select messages from message array
+//      
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+//
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+
+"TonUtil.fif" include
+"Asm.fif" include
+"MagArray.fif" include
+
+{   cr
+    ."usage: " @' $0 type ." <filename-base> [ non ]" cr cr
+    ."Select messages from a message array for multisignature wallet for public key loaded from <filename-base>.pk" cr
+    ."    message array loaded from  <filename-base>.msg"  cr 
+    ."    and result stored <filename-base>.select" cr 1 halt
+} : usage
+
+$# 2 < ' usage if
+
+$1 =: file-base
+def? $2 { @' $2 "non" $= { false } { true } cond } { true } cond constant selector
+
+// ( filename -- boc )
+{ dup file-exists?
+  {  file>B B>boc }
+  { ."File '" type ."' is not found " cr 1 halt } cond
+} : load-file
+
+file-base +".msg" load-file             // msgarray
+file-base +".pk" load-generate-keypair  // msgarray, pubk, pkey
+constant wallet_pk                      // msgarray, pubk
+constant wallet_pubk                    // msgarray
+file-base +".pubk" load-file            // msgarray, ka
+key#@ @' pubkn                          // msgarray, ka, pubkn
+=: keynumber                            // msgarray, ka
+wallet_pubk B>u                         // msgarray, ka, pubk
+key? 0= { ."Public key is not found in the wallet key array " cr 1 halt } if
+dup                                     // msgarray, index, index
+."Selecting messages for key index: " . cr
+@' selector                             // msgarray, index, selector
+msgSEL                                  // msgarray'
+
+2 boc+>B 
+file-base +".select" B>file
+."Save message array to the file : " file-base +".select" type cr
+
