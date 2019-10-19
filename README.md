@@ -1,5 +1,4 @@
-# mswallet
-TON blockchain macro assembler multi signature wallet
+# TON blockchain macro assembler multi signature wallet
 
 The goal was create an efficient multi signature wallet using only basic TON operation, native data structures and minimise the gas consumption based on the formula Pb := 10 + b + 5r. 
 
