@@ -4,6 +4,7 @@
 // Dictionary:
 //
 //      key[]   = create empty array of keys with 'keyn' max number of elements
+//      dkey[]  = create empty dictionary of keys with 'keyn' max number of elements and 'keylen' lenght of key
 //      key#@   = @ max key number in the array and store it in 'pubkn' constant
 //      key[]>  = print out the array
 //      key#    = return number of key in the array
@@ -36,6 +37,20 @@
     dup =: pubkn <b swap 16 u, 0 16 u, b>
 } : key[]
 
+
+{
+    0 @' pubkn { swap 1+ swap 1 >> dup 0= } until drop
+} : dkeyLength
+
+// create empty dictionary array of keys with 'keyn' max number of elements
+// ( keyn -- keyarray }
+{
+    dup =: pubkn 0 swap { swap 1+ swap 1 >> dup 0= } until drop =: keylen 
+    pubkn <b swap 16 u, 0 16 u, dictnew dict, b>
+} : dkey[]
+
+
+
 // @ max key number in the array and store it in 'pubkn' constant
 // ( keyarray -- keyarray )
 {
@@ -47,6 +62,10 @@
 {
     dup <s csr.
 } : key[]>
+
+{
+    dup <s 16 u@+ ."max # : " swap . cr 16 u@+ ."key # : " swap . cr dict@ dup null? { ."dict  : empty" cr } { ."dict  : " cr key[] } cond drop 
+} : dkey[]>
 
 // return number of key in the array
 // ( keyarray -- keyarray, keynum  )
@@ -315,6 +334,8 @@
     drop
     key+
 } : key,
+
+
 
 
 // append key to the aray 
