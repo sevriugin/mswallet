@@ -64,7 +64,7 @@
 } : key[]>
 
 {
-    dup <s 16 u@+ ."max # : " swap . cr 16 u@+ ."key # : " swap . cr dict@ dup null? { ."dict  : empty" cr } { ."dict  : " cr key[] } cond drop 
+    dup <s 16 u@+ ."max # : " swap . cr 16 u@+ ."key # : " swap . cr dict@ dup null? { ."dict  : empty" cr } { ."dict  : " cr key[]> } cond drop 
 } : dkey[]>
 
 // return number of key in the array
@@ -335,9 +335,6 @@
     key+
 } : key,
 
-
-
-
 // append key to the aray 
 // ( keyarray, key -- keyarray', i  )
 {
@@ -355,6 +352,43 @@
     key,                // keynum, keyarray'
     swap                // keyarray', i
 } : key&
+
+// append key to the dictionary
+// ( keyarray, key -- keyarray', i  )
+{
+    swap                // key, keyarray
+    key#                // key, keyarray, keynum
+    dup                 // key, keyarray, keynum, keynum
+    @' pubkn            // key, keyarray, keynum, keynum, keymax
+    = abort"dictionary is full"
+    over                // key, keyarray, keynum, keyarray
+    <s                  // key, keyarray, keynum, kas
+    dict@               // key, keyarray, keynum, dict
+    3 roll              // keyarray, keynum, dict, key
+    <b swap B,          // keyarray, keynum, dict, bkey
+    rot rot             // keyarray, bkey, keynum, dict
+    dkeyLength          // keyarray, bkey, keynum, dict, keylen
+    b>idict!            // keyarray, dict', ?
+    {   
+        swap            // dict', keyarray
+        key#            // dict', keyarray, keynum
+        swap drop       // dict', keynum
+        1+              // dict', keynum + 1 =: keynum'
+        <b              // dict', keynum', b
+        @' pubkn        // dict', keynum', b, keymax
+        16 u,           // dict', keynum', b'
+        over            // dict', keynum', b', keynum'
+        16 u,           // dict', keynum', b"
+        rot             // keynum', b",  dict'
+        dict,           // keynum', b"'
+        b>              // keynum', keyarray'
+        swap 1-         // keyarray', i
+    }
+    {
+        abort"dictionary b>idict! error"
+    }
+    cond
+} : dkey&
 
 // ( cc, i -- key )
 {
@@ -446,7 +480,7 @@
 {
     swap                // key, root
     key#                // key, root, keynum
-    dup 0= { 2drop drop 0 } {
+    dup 0= { -rot 2drop 0 } {
     swap                // key, keynum, root
     0                   // key, keynum, root, 0
     swap over           // key, keynum, i, root, i
