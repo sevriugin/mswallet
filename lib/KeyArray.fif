@@ -15,10 +15,14 @@
 //      key@    = @ key from array for given index
 //      key@+   = @ key from array for given index and keep array in the stack
 //      key?    = find the key in the array
+//      dkey?   = find the key in the key dict
 //      key?+   = find the key in the array and keep array in the stack
 //      B>u     = BYTE {0..256} to uint256 converter 
+//      dkey[]>dict = extract dictionary from key dictionary 
+//
 // TVM
 //      KEY@    = key@
+//      DKEY@   = dkey@ BUT WORKS ONLY WITH dictionary and don't need header cell, so need dkey[]>dict before 
 //      
 // Copyright Sergei Sevriugin (c) 2019
 //
@@ -50,6 +54,8 @@
     dup =: pubkn 0 swap { swap 1+ swap 1 >> dup 0= } until drop =: keylen 
     @' pubkn <b swap 16 u, 0 16 u, b>
 } : dkey[]
+
+{ <s ref@ } : dkey[]>dict
 
 
 
@@ -477,6 +483,26 @@
     drop
 } : key@
 
+// fetch key from key dictionary for given index
+// ( keyarray, i -- key )
+{
+    swap                // i, keyarray
+    key#                // i, keyarray, keynum
+    rot                 // keyarray, keynum, i
+    swap over           // keyarray, i, keynum, i
+    <=                  // keyarray, i, ( keynum <= i )?
+    abort"index out of range"
+    // ( keyarray, i -- )
+    swap                // i, keyarray
+    <s ref@?+           // i, keyarray', dict
+    0= abort"empty key dict" 
+    swap drop           // i, dict
+    dkeyLength          // i, dict, keylen
+    udict@              // keyc, ?
+    0= abort"key for given index not found"
+    256 u@              // key
+} : dkey@
+
 { over swap key@ } : key@+
 
 // find the key in the array 
@@ -530,6 +556,52 @@
     }
     cond
 } : key?
+
+// find the key in the key dict 
+// ( keyarray, key -- i, -1 or 0 )
+{
+    swap                // key, keyarray
+    key#                // key, keyarray, keynum
+    dup 0= { -rot 2drop 0 } 
+    {                   // key, keyarray, keynum
+        swap            // key, keynum, keyarray
+        <s ref@?+       // key, keynum, keyarray', dict
+        0= abort"empty key dict" 
+        swap drop       // key, keynum, dict
+        swap            // key, dict, keynum
+        0               // key, dict, keynum, 0
+        3 -roll         // flag, key, dict, keynum
+        -rot            // flag, keynum, key, dict
+        2 pick          // flag, keynum, key, dict, keynum
+        {
+            1-          // flag, keynum, key, dict, i
+            over        // flag, keynum, key, dict, i, dict
+            over        // flag, keynum, key, dict, i, dict, i
+            swap        // flag, keynum, key, dict, i, i, dict
+            dkeyLength  // flag, keynum, key, dict, i, i, dict, keylen
+            udict@      // flag, keynum, key, dict, i, keys, ?
+            0= abort"key for given index not found"
+                        // flag, keynum, key, dict, i, keys
+            256 u@      // flag, keynum, key, dict, i, key'
+            3 pick      // flag, keynum, key, dict, i, key', key
+            = 
+            {           // flag, keynum, key, dict, i
+                3 -roll // flag, i, keynum, key, dict
+                rot     // flag, i, key, dict, keynum
+                drop 0  // flag, i, key, dict, 0
+                4 roll  // i, key, dict, 0, flag
+                drop -1 // i, key, dict, 0, -1
+                4 -roll // -1, i, key, dict, 0
+            } if
+            dup 0=
+        } until
+                        // flag, i | keynum, key, dict, 0
+        drop            // flag, i | keynum, key, dict
+        2drop           // flag, i | keynum
+        swap            // i | keynum, flag
+    }
+    cond
+} : dkey?
 
 { over swap key? } : key?+
 
@@ -633,6 +705,15 @@
         }>ELSE<{ ONE FETCHPATH1 }>
     }>
 } : KEY@
+
+// ( dict, i -- key )
+{
+    SWAP            // i, dict
+    dkeyLength INT  // i, dict, keylen
+    DICTUGET        // keys, ?
+    37 THROWIFNOT
+    256 PLDU        // key
+} : DKEY@
 
 
 
