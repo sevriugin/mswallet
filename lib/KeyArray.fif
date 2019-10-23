@@ -7,9 +7,11 @@
 //      dkey[]  = create empty dictionary of keys with 'keyn' max number of elements and 'keylen' lenght of key
 //      key#@   = @ max key number in the array and store it in 'pubkn' constant
 //      key[]>  = print out the array
+//      dkey[]> = print out key dictionary
 //      key#    = return number of key in the array
 //      key,    = insert key in array in given index
 //      key&    = append key to the aray
+//      dkey&   = append key to the key dictionary 
 //      key@    = @ key from array for given index
 //      key@+   = @ key from array for given index and keep array in the stack
 //      key?    = find the key in the array
@@ -46,7 +48,7 @@
 // ( keyn -- keyarray }
 {
     dup =: pubkn 0 swap { swap 1+ swap 1 >> dup 0= } until drop =: keylen 
-    pubkn <b swap 16 u, 0 16 u, dictnew dict, b>
+    @' pubkn <b swap 16 u, 0 16 u, b>
 } : dkey[]
 
 
@@ -64,7 +66,7 @@
 } : key[]>
 
 {
-    dup <s 16 u@+ ."max # : " swap . cr 16 u@+ ."key # : " swap . cr dict@ dup null? { ."dict  : empty" cr } { ."dict  : " cr key[]> } cond drop 
+    dup <s 16 u@+ ."max # : " swap . cr 16 u@+ ."key # : " swap . cr ref@?+ { ."dict  : " cr key[]> drop } { ."dict  : empty" cr } cond s>
 } : dkey[]>
 
 // return number of key in the array
@@ -363,12 +365,14 @@
     = abort"dictionary is full"
     over                // key, keyarray, keynum, keyarray
     <s                  // key, keyarray, keynum, kas
-    dict@               // key, keyarray, keynum, dict
+    ref@?+              // key, keyarray, keynum, kas', dict
+    0= { dictnew } if
+    swap drop           // key, keyarray, keynum, dict
     3 roll              // keyarray, keynum, dict, key
     <b swap B,          // keyarray, keynum, dict, bkey
     rot rot             // keyarray, bkey, keynum, dict
     dkeyLength          // keyarray, bkey, keynum, dict, keylen
-    b>idict!            // keyarray, dict', ?
+    b>udict!            // keyarray, dict', ?
     {   
         swap            // dict', keyarray
         key#            // dict', keyarray, keynum
@@ -380,7 +384,7 @@
         over            // dict', keynum', b', keynum'
         16 u,           // dict', keynum', b"
         rot             // keynum', b",  dict'
-        dict,           // keynum', b"'
+        ref,            // keynum', b"'
         b>              // keynum', keyarray'
         swap 1-         // keyarray', i
     }
