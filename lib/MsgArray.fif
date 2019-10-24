@@ -15,6 +15,7 @@
 //      msgX    = delete message for given hash from array
 //      dmsgX   = dict: delete message for given hash from message dict
 //      msgXT   = clean array based on unixtime
+//      dmsgXT  = dict: clean message dict based on unixtime
 //      msgU    = update signature mask for message envelop for given hash 
 //      msg[]>  = printout the array
 //      msgSEL  = select messages from the array for given keyindex and selector = { true | false } and return selected messages array
@@ -861,6 +862,108 @@
     cond
 } : msgXT
 
+// ( b, v -- b', -1 or 0 )
+// time to delete if less is xtime
+0 constant xtime
+0 constant xtimecount
+0 constant xtimenet
+{
+    dup                     // b, v, v
+    32 u@                   // b, v, t
+    dup                     // b, v, t, t
+    @' xtime                // b, v, t, t, xtime
+    <
+    { drop 2drop 0 @' xtimecount 1+ =: xtimecount }
+    {                       // b, v, t
+        dup                 // b, v, t, t
+        @' xtimenet         // b, v, t, t, xtimenet
+        <
+        {                   // b, v, t
+            =: xtimenet     // b, v
+        }
+        {                   // b, v, t
+            drop            // b, v     
+        }
+        cond
+        s, -1 
+    }
+    cond
+} : deleteTime
+
+{                           // ma, t
+    over                    // ma, t, ma
+    <s 32 u@                // ma, t, msgnum
+    0>
+    {                       // ma, t
+        swap                // t, ma
+        <s ref@+            // t, mas', dict       
+        rot                 // mas', dict, t
+        =: xtime            // mas', dict
+        0                   // mas', dict, 0
+        =: xtimecount
+        2147483647          // mas', dict, 2147483647
+         =: xtimenet
+        256                 // mas', dict, 256
+        ' deleteTime
+                            // mas', dict, 256, deleteTime
+        dictmap             // mas', dict'
+        @' xtimecount
+        {
+            <b              // mas', dict', b
+            rot             // dict', b, mas'
+            32 u@+          // dict', b, msgnum, mas"
+            swap            // dict', b, mas", msgnum
+            @' xtimecount   // dict', b, mas", msgnum, xtimecount
+            -               // dict', b, mas", msgnum'
+            dup 0=
+            {               // dict', b, mas", 0
+                drop        // dict', b, mas"
+                -rot        // mas", dict', b
+                swap drop   // mas", b
+                0 32 u,     // mas", b'
+                swap        // b', mas"
+                32 i@+      // b', net, mas"'
+                swap drop   // b', mas"'
+                swap        // mas"', b'
+                2147483647 
+                32 i,       // mas"', b"
+                swap        // b", mas"'
+                s,          // b"'
+                b>          // ma'
+
+            }
+            {               // dict', b, mas", msgnum'
+                rot swap    // dict', mas", b, msgnum'
+                32 u,       // dict', mas", b'
+                swap        // dict', b', mas"
+                32 i@+      // dict', b', net, mas"'
+                swap drop   // dict', b', mas"'
+                swap        // dict', mas"', b'
+                @' xtimenet // dict', mas"', b', net'
+                32 i,       // dict', mas"', b"
+                swap        // dict', b", mas"'
+                s,          // dict', b"'
+                swap        // b"', dict'
+                ref,        // b""
+                b>          // ma'
+            }
+            cond
+        }
+        {                   // mas', dict
+            <b              // mas', dict, b
+            swap            // mas', b, dict
+            ref,            // mas', b'
+            swap            // b', mas'
+            s,              // b"
+            b>              // ma
+        }
+        cond
+    }
+    {
+        drop        // ma
+    }
+    cond
+} : dmsgXT
 
 // update signature mask for message envelop for given hash 
 // ( msgarray, hash, s -- msgarray') 
