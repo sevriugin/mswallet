@@ -1,0 +1,106 @@
+//
+// Macro assembler multi signature wallet test
+//
+// Copyright Sergei Sevriugin (c) 2019
+//
+// The contest ends on October, 15 at 23:00 CET.
+//
+// Giro d'Iseo (R)
+// Foresto Sparso
+// Bergamo
+// Italia
+// 
+// The contest ends on October, 15 at 23:00 CET.
+//
+"TonUtil.fif" include
+"Asm.fif" include
+"KeyArray.fif" include
+"MsgArray.fif" include
+"SigArray.fif" include
+"MSWallet.fif" include
+
+10 constant pubkn
+10 constant keynumber
+
+newkeypair constant pubk01 constant pkey01
+newkeypair constant pubk02 constant pkey02
+newkeypair constant pubk03 constant pkey03
+newkeypair constant pubk04 constant pkey04
+newkeypair constant pubk05 constant pkey05
+newkeypair constant pubk06 constant pkey06
+newkeypair constant pubk07 constant pkey07
+newkeypair constant pubk08 constant pkey08
+newkeypair constant pubk09 constant pkey09
+newkeypair constant pubk10 constant pkey10
+
+
+10 dkey[] =: keydict
+keydict pubk01 dkey& drop =: keydict
+keydict pubk02 dkey& drop =: keydict
+keydict pubk03 dkey& drop =: keydict
+keydict pubk04 dkey& drop =: keydict
+keydict pubk05 dkey& drop =: keydict
+keydict pubk06 dkey& drop =: keydict
+keydict pubk07 dkey& drop =: keydict
+keydict pubk08 dkey& drop =: keydict
+keydict pubk09 dkey& drop =: keydict
+keydict pubk10 dkey& drop =: keydict
+
+
+true constant bounce
+"1" $>GR =: amount
+"0" parse-int =: seqno
+"Ef9Tj6fMJP-OqhAdhKXxq36DL-HYSzCc3-9O6UNzqsgPfYFX" true parse-load-address =: bounce 2=: dest_addr // !!! TEST ONLY !!!
+dest_addr 2=: wallet_addr    // !!! TEST ONLY !!!
+3 constant send-mode        // mode for SENDRAWMSG: +1 - sender pays fees, +2 - ignore errors
+60 constant timeout         // external message expires in 60 seconds
+<b 0 32 u, "TESTv1" $, b> constant body-cell
+// create a message
+<b b{01} s, bounce 1 i, b{000100} s, dest_addr addr, amount Gram, 0 9 64 32 + + 1+ u, 
+  body-cell <s 2dup s-fits? not rot over 1 i, -rot { drop body-cell ref, } { s, } cond
+b> constant int-message-body-cell 
+
+int-message-body-cell <b seqno 32 u, now timeout + 32 u, send-mode 8 u, swap ref, b> constant int-message-cell 
+
+10 3 sig[]
+int-message-cell hash pkey01 ed25519_sign_uint 0 sig&
+int-message-cell hash pkey03 ed25519_sign_uint 2 sig&
+int-message-cell hash pkey08 ed25519_sign_uint 7 sig&
+constant sigarray
+
+int-message-cell sigarray <b b{1000100} s, wallet_addr addr, 0 Gram, b{00} s, swap ref, swap <s s, b>
+constant external-message
+
+10 3 msg[] constant msgarray 
+
+// ! TEST START
+1570607123 -10 + constant now-time 
+external-message keydict dkey[]>dict msgarray 10 3
+// ( emsg, ka, ma, n, k --
+<{                      
+    // TEST: start prep. 
+    // ---- start initial state (is) prep. --- 
+    NEWC                        // emsg, ka, ma, n, k, iss
+    ZERO SWAP 32 STU            // emsg, ka, ma, n, k, iss{ seqno }
+    16 STU                      // emsg, ka, ma, n, iss{ seqno, k }
+    16 STU                      // emsg, ka, ma, iss{ seqno, k, n }
+    STREF                       // emsg, ka, iss{ seqno, k, n, Refs: { ma } }
+    STREF                       // emsg, iss{ seqno, k, n, Refs: { ma, ka } }
+    ENDC                        // emsg, isc
+    c4 POP                      // emsg  
+    // ---- end initial state (is) prep. --- 
+    // ---- start Smart contract Info prep. ---
+    ZERO ZERO ZERO @' now-time INT 4 TUPLE 1 TUPLE c7 POP
+    // ---- end Smart contract Info prep. ---
+    CTOS                        // emsg-s
+    21 LDU                      // d1, emsg-s'
+    256 LDU                     // d1, d2, emsg-s"
+    -ROT 2DROP                  // msg-s"
+    -1 INT                      // msg-s", selector
+    // TEST: end prep.
+    DMSWALLET
+    c4 PUSHCTR
+}>s
+dup csr.
+runvmcode drop .s
+// ! TEST END

@@ -20,6 +20,7 @@
 //      I>M         = i>m
 //      SIG@        = sig@
 //      SIGCHECK    = Check signatures (sigarray) for given keyarray, hash and mask 
+//      DSIGCHECK   = SIGCHECK with dictionaries
 //      
 // Copyright Sergei Sevriugin (c) 2019
 //
@@ -347,6 +348,63 @@ newkeypair constant pubkey constant pkey
 
     }>ELSE<{ 2DROP 2DROP ZERO }>
 } : SIGCHECK
+
+{
+                                    // ka, sa, h, msk
+    ROT                             // ka, h, msk, sa
+    DUP SIG#                        // ka, h, msk, sa, len
+    DUP ISPOS                       // ka, h, msk, sa, len, ?
+    IF:<{                           // ka, h, msk, sa, len
+        <{
+            DEC                     // ka, h, msk, sa, len'
+            SWAP                    // ka, h, msk, len' sa
+            SIG@                    // ka, h, msk, len', sa', sig, i
+            DUP                     // ka, h, msk, len', sa', sig, i, i
+            I>M                     // ka, h, msk, len', sa', sig, i, im
+            s5 PUSH                 // ka, h, msk, len', sa', sig, i, im, msk
+            AND                     // ka, h, msk, len', sa', sig, i, msk & im
+            ISZERO                  // ka, h, msk, len', sa', sig, i, ?
+            IF:<{                   // ka, h, msk, len', sa', sig, i
+                s5 PUSH             // ka, h, msk, len', sa', sig, i, h
+                ROT                 // ka, h, msk, len', sa', i, h, sig
+                s2 PUSH             // ka, h, msk, len', sa', i, h, sig, i
+                s8 PUSH             // ka, h, msk, len', sa', i, h, sig, i, ka
+                SWAP                // ka, h, msk, len', sa', i, h, sig, ka, i
+                DKEY@               // ka, h, msk, len', sa', i, h, sig, pubk
+                CHKSIGNU            // ka, h, msk, len', sa', i, ?
+                IF:<{               // ka, h, msk, len', sa', i
+                    3 ROLL          // ka, h, len', sa', i, msk
+                    SWAP            // ka, h, len', sa', msk, i
+                    I>M             // ka, h, len', sa', msk, im
+                    OR              // ka, h, len', sa', msk | im := msk'
+                    -ROT            // ka, h, msk', len' sa'
+                    SWAP            // ka, h, msk', sa', len'
+                }>ELSE<{            // ka, h, msk, len', sa', i
+                    DROP            // ka, h, msk, len', sa'
+                    ROT DROP ZERO   // ka, h, len', sa', 0 := msk'
+                    -ROT            // ka, h, 0, len', sa'
+                    SWAP DROP ZERO  // ka, h, 0, sa', 0
+                }>
+            }>ELSE<{                // ka, h, msk, len', sa', sig, i
+                2DROP               // ka, h, msk, len', sa'                        
+                SWAP                // ka, h, msk, sa', len'
+            }>
+            DUP ISZERO
+        }>UNTIL
+                                    // ka, h, msk', sa', 0
+        2DROP                       // ka, h, msk'
+        DUP ISPOS                   // ka, h, msk', ?
+        IF:<{                       // ka, h, msk' 
+            SWAP DROP               // ka, msk'
+            SWAP DROP               // msk'
+            -1 INT                  // msk', -1
+        }>ELSE<{                    // ka, h, 0
+            SWAP DROP               // ka, 0
+            SWAP DROP               // 0
+        }>
+
+    }>ELSE<{ 2DROP 2DROP ZERO }>
+} : DSIGCHECK
 
 
 
