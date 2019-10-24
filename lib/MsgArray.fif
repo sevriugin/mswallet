@@ -996,7 +996,7 @@
     32 STU          // k, s, b'
     2147483647 INT  // k, s, b', 2147483647
     SWAP            // k, s, 2147483647, b'
-    32 STI         // k, s, b"
+    32 STI          // k, s, b"
     16 STU          // k, b"'            
     16 STU          // b""
     ENDC            // ma
@@ -1062,6 +1062,74 @@
     STREF           // mab"""
     ENDC            // ma'
 } : MSG&
+
+{ 
+    ROT             // ma, t, s, m
+    DUP HASHCU      // ma, t, s, m, hash
+    NEWC            // ma, t, s, m, hash, b
+    s1 s2 XCHG      // ma, t, s, hash, m, b
+    STREF           // ma, t, s, hash, b'
+    s3 PUSH         // ma, t, s, hash, b', t
+    SWAP            // ma, t, s, hash, t, b'
+    32 STU          // ma, t, s, hash, b"
+    s1 s2 XCHG      // ma, t, hash, s, b"
+    @' keynumber STU
+                    // ma, t, hash, b"'
+    3 ROLL          // t, hash, b"', ma
+    NEWC            // t, hash, b"', ma, mab
+    SWAP            // t, hash, b"', mab, ma
+    CTOS            // t, hash, b"', mab, mas
+    32 LDU          // t, hash, b"', mab, msgnum, mas'
+    SWAP            // t, hash, b"', mab, mas', msgnum
+    INC             // t, hash, b"', mab, mas', msgnum + 1
+    ROT             // t, hash, b"', mas', msgnum + 1, mab
+    32 STU          // t, hash, b"', mas', mab'
+    SWAP            // t, hash, b"', mab', mas'
+    32 LDU          // t, hash, b"', mab', t', mas"
+    SWAP            // t, hash, b"', mab', mas", t'
+    5 ROLL          // hash, b"', mab', mas", t', t
+    2DUP GREATER    // hash, b"', mab', mas", t', t, (t' > t)
+    IF:<{
+        SWAP DROP   // hash, b"', mab', mas", t
+        ROT         // hash, b"', mas", t, mab'
+        32 STI      // hash, b"', mas", mab"
+    }>ELSE<{ 
+        DROP        // hash, b"', mab', mas", t'
+        ROT         // hash, b"', mas", t, mab'
+        32 STI      // hash, b"', mas", mab"
+    }>
+    SWAP            // hash, b"', mab", mas"
+    16 LDU          // hash, b"', mab", signum, mas"'
+    SWAP ROT        // hash, b"', mas"', signum, mab"
+    16 STU          // hash, b"', mas"', mab"'
+    SWAP            // hash, b"', mab"', mas"'
+    16 LDU          // hash, b"', mab"', keynumber, mas""
+    SWAP ROT        // hash, b"', mas"", keynumber, mab"',
+    16 STU          // hash, b"', mas"", mab""
+    SWAP            // hash, b"', mab"", mas""
+    REF@?+          // hash, b"', mab"", dict, mas""', ?
+    IF:<{           // hash, b"', mab"", dict, mas""'
+        SWAP        // hash, b"', mab"", mas""', dict
+        3 ROLL      // hash, mab"", mas""', dict, b"'
+        4 ROLL      // mab"", mas""', dict, b"', hash
+        ROT         // mab"", mas""', b"', hash, dict
+        256 INT     // mab"", mas""', b"', hash, dict, 256
+        DICTUSETB   // mab"", mas""', dict'
+    }>ELSE<{        // hash, b"', mab"", mas""'
+        ROT         // hash, mab"", mas""', b"'
+        3 ROLL      // mab"", mas""', b"', hash
+        NEWDICT     // mab"", mas""', b"', hash, dict
+        256 INT     // mab"", mas""', b"', hash, dict, 256
+         DICTUSETB  // mab"", mas""', dict'
+    }>
+    SWAP            // mab"", dict', mas""'
+    ENDS            // mab"", dict'
+    SWAP            // dict', mab""
+    STREF           // mab""'
+    ENDC            // ma'
+} : DMSG&
+
+
 
 
 { 
