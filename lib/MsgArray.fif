@@ -6,10 +6,14 @@
 // Dictionary:
 //
 //      msg[]   = create empty array of message for given 'keynumber' and 'signum'
+//      dmsg[]  = dict: create empty message dict == msg[]
 //      msg&    = add new messag to the array
+//      dmsg&   = dict: add new messag to the message dict
 //      msg?    = find message for given hash and return message envelop (emsg)
+//      dmsg?   = dict : find message for given hash and return message envelop (emsg)
 //      msg@    = @ message from the message envelop
 //      msgX    = delete message for given hash from array
+//      dmsgX   = dict: delete message for given hash from message dict
 //      msgXT   = clean array based on unixtime
 //      msgU    = update signature mask for message envelop for given hash 
 //      msg[]>  = printout the array
@@ -49,6 +53,8 @@
     16 u,       // number of keys (n)
     b>
 } : msg[]
+
+{ msg[] } : dmsg[]
 
 // add new messag to the array
 // ( msgarray, msg, t, s -- msgarray' )
@@ -112,6 +118,80 @@
     b>              // ma'
 } : msg&
 
+// the message dictionary 
+// new message envelop for dictionary :
+// { t = message expiry time (32), s = signmask(keynumber); ref(m = msg) }
+{
+    rot             // ma, t, s, m
+    dup hash        // ma, t, s, m, hash
+    <b              // ma, t, s, m, hash, b
+    rot             // ma, t, s, hash, b, m
+    ref,            // ma, t, s, hash, b'
+    3 pick          // ma, t, s, hash, b', t
+    32 u,           // ma, t, s, hash, b"
+    rot             // ma, t, hash, b", s
+    @' keynumber    // ma, t, hash, b", s, keynumber
+    u,              // ma, t, hash, b"'
+    3 roll          // t, hash, b"', ma
+    <b              // t, hash, b"', ma, mab
+    swap            // t, hash, b"', mab, ma
+    <s              // t, hash, b"', mab, mas
+    32 u@+          // t, hash, b"', mab, msgnum, mas'
+    swap            // t, hash, b"', mab, mas', msgnum
+    1+              // t, hash, b"', mab, mas', msgnum + 1
+    rot swap        // t, hash, b"', mas', mab, msgnum + 1
+    32 u,           // t, hash, b"', mas', mab'
+    swap            // t, hash, b"', mab', mas'
+    32 i@+          // t, hash, b"', mab', t', mas"
+    swap            // t, hash, b"', mab', mas", t'
+    5 roll          // hash, b"', mab', mas", t', t
+    2dup >          // hash, b"', mab', mas", t', t, (t' > t)
+    {
+        swap drop   // hash, b"', mab', mas", t
+        rot swap    // hash, b"', mas", mab', t
+        32 i,       // hash, b"', mas", mab"
+    }
+    {
+        drop        // hash, b"', mab', mas", t'
+        rot swap    // hash, b"', mas", mab', t'
+        32 i,       // hash, b"', mas", mab"
+    } cond
+    swap            // hash, b"', mab", mas"
+    16 u@+          // hash, b"', mab", signum, mas"'
+    swap rot swap   // hash, b"', mas"', mab", signum
+    16 u,           // hash, b"', mas"', mab"'
+    swap            // hash, b"', mab"', mas"'
+    16 u@+          // hash, b"', mab"', keynumber, mas""
+    swap rot swap   // hash, b"', mas"", mab"', keynumber
+    16 u,           // hash, b"', mas"", mab""
+    swap            // hash, b"', mab"", mas""
+    ref@?+          // hash, b"', mab"", mas""', dict, ?
+    {               // hash, b"', mab"", mas""', dict
+        3 roll      // hash, mab"", mas""', dict, b"'
+        4 roll      // mab"", mas""', dict, b"', hash
+        rot         // mab"", mas""', b"', hash, dict
+        256         // mab"", mas""', b"', hash, dict, 256
+        b>udict!    // mab"", mas""', dict'
+        0= abort"error adding new message"
+        swap        // mab"", dict', mas""'
+        s>          // mab"", dict'
+        ref,        // mab""'
+        b>          // ma'
+    }
+    {               // hash, b"', mab"", mas""'
+        s>          // hash, b"', mab""
+        swap        // hash, mab"", b"'
+        rot         // mab"", b"', hash
+        dictnew     // mab"", b"', hash, dict
+        256         // mab"", b"', hash, dict, 256
+        b>udict!    // mab"", dict'
+        0= abort"error adding new message"
+        ref,        // mab""'
+        b>          // ma'
+    }
+    cond
+} : dmsg&
+
 // find message for given hash and return message envelop (emsg)
 // ( msgarray := ma, hash := h -- emsg := em, -1 or 0 )
 {
@@ -173,6 +253,28 @@
     { 2drop drop 0 } 
     cond
 } : msg?
+
+{
+    swap <s ref@?+          // hash, mas', dict, ?
+    {                       // hash, mas', dict
+        rot                 // mas', dict, hash
+        swap                // mas', hash, dict
+        256                 // mas', hash, dict, 256
+        udict@              // mas', mes, ?
+        {                   // mas', mes
+            <b swap s, b>   // mas', me
+            swap drop -1    // me, -1
+        }
+        {                   // mas'
+            drop 0          // 0
+        }
+        cond
+    }
+    {                       // hash, mas',
+        2drop 0             // 0
+    }
+    cond
+} : dmsg?
 
 // ( emsg -- msg )
 { <s ref@ } : msg@
@@ -407,6 +509,87 @@
     } 
     cond
 } : msgX
+
+// ( b, v -- b', -1 or 0 )
+// hash to delete is xhash
+0 constant xhash
+0 constant xhashflag
+{
+    dup                     // b, v, v
+    ref@                    // b, v, m
+    hash                    // b, v, hash
+    @' xhash                // b, v, hash, xhash
+    = 
+    { 2drop 0 -1 =: xhashflag }
+    { s, -1 }
+    cond
+} : deleteHash
+
+{                           // ma, h
+    over                    // ma, h, ma
+    <s 32 u@                // ma, h, msgnum
+    0>
+    {                       // ma, h
+        swap                // h, ma
+        <s ref@+            // h, mas', dict       
+        rot                 // mas', dict, h
+        =: xhash            // mas', dict
+        0                   // mas', dict, 0
+        =: xhashflag
+        256                 // mas', dict, 256
+        ' deleteHash
+                            // mas', dict, 256, deleteHash
+        dictmap             // mas', dict'
+        @' xhashflag
+        {
+            <b              // mas', dict', b
+            rot             // dict', b, mas'
+            32 u@+          // dict', b, msgnum, mas"
+            swap            // dict', b, mas", msgnum
+            1-              // dict', b, mas", msgnum'
+            dup 0=
+            {               // dict', b, mas", 0
+                drop        // dict', b, mas"
+                -rot        // mas", dict', b
+                swap drop   // mas", b
+                0 32 u,     // mas", b'
+                swap        // b', mas"
+                32 i@+      // b', net, mas"'
+                swap drop   // b', mas"'
+                swap        // mas"', b'
+                2147483647 
+                32 i,       // mas"', b"
+                swap        // b", mas"'
+                s,          // b"'
+                b>          // ma'
+
+            }
+            {               // dict', b, mas", msgnum'
+                rot swap    // dict', mas", b, msgnum'
+                32 u,       // dict', mas", b'
+                swap        // dict', b', mas"
+                s,          // dict', b"
+                swap        // b", dict'
+                ref,        // b"'
+                b>          // ma'
+            }
+            cond
+        }
+        {                   // mas', dict
+            <b              // mas', dict, b
+            swap            // mas', b, dict
+            ref,            // mas', b'
+            swap            // b', mas'
+            s,              // b"
+            b>              // ma
+        }
+        cond
+    }
+    {
+        drop        // ma
+    }
+    cond
+} : dmsgX
 
 // clean array based on unixtime
 // ( msgarray, t -- msgarray') 
