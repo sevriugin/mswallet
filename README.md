@@ -10,4 +10,6 @@ Use mswallet-test.fif to see the performance
 
 [More info for this project](HOWTO.pdf)
 
+Add new virsion of wallet with dictionary. See dmswallet-test.fif 
+
 Have a nice ride!
