@@ -1696,6 +1696,94 @@
     }>
 } : MSGXT
 
+{                           // ma, t
+    OVER                    // ma, t, ma
+    CTOS 32 PLDU            // ma, t, msgnum, msgnum
+    DUP ISPOS
+    IF:<{                   // ma, t, msgnum
+        SWAP                // ma, msgnum, t
+        2147483647 INT      // ma, msgnum, t, 2147483647 =: net'
+        ROT                 // ma, t, net', msgnum
+        3 ROLL              // t, net', msgnum, ma
+        CTOS LDREF          // t, net', msgnum, dict, mas'
+        SWAP                // t, net', msgnum, mas', dict   
+        s1 s4 XCHG          // mas', net', msgnum, t, dict
+        NEWDICT             // mas', net', msgnum, t, dict, dict'
+        ZERO                // mas', net', msgnum, t, dict, dict', 0
+        s0 s4 XCHG          // mas', net', 0 =: msgnum', t, dict, dict', msgnum =: i
+                            // mas', net', msgnum', t, dict, dict', i
+        ZERO                // mas', net', msgnum', t, dict, dict', i, 0 := hash
+        SWAP                // mas', net', msgnum', t, dict, dict', hash, i
+        <{  DEC             // mas', net', msgnum', t, dict, dict', hash, i'
+            SWAP            // mas', net', msgnum', t, dict, dict', i', hash
+            s3 PUSH         // mas', net', msgnum', t, dict, dict', i', hash, dict
+            256 INT         // mas', net', msgnum', t, dict, dict', i', hash, dict, 256
+            DICTUGETNEXT    // mas', net', msgnum', t, dict, dict', i', mes, hash', ?
+            IF:<{           // mas', net', msgnum', t, dict, dict', i', mes, hash'
+                OVER        // mas', net', msgnum', t, dict, dict', i', mes, hash', mes
+                32 PLDU     // mas', net', msgnum', t, dict, dict', i', mes, hash', t'
+                DUP         // mas', net', msgnum', t, dict, dict', i', mes, hash', t', t'
+                s7 PUSH     // mas', net', msgnum', t, dict, dict', i', mes, hash', t', t', t
+                LESS        // mas', net', msgnum', t, dict, dict', i', mes, hash', t', ?
+                IF:<{       // DO NOT INCLUDE THIS MESSAGE IN THE RESULT DICTIONARY
+                    DROP    // mas', net', msgnum', t, dict, dict', i', mes, hash'
+                    SWAP    // mas', net', msgnum', t, dict, dict', i', hash', mes
+                    DROP    // mas', net', msgnum', t, dict, dict', i', hash'
+                    SWAP    // mas', net', msgnum', t, dict, dict', hash', i'
+                }>ELSE<{    // INCLUDE THIS MESSAGE IN THE RESULT
+                            // mas', net', msgnum', t, dict, dict', i', mes, hash', t'
+                    s8 PUSH // mas', net', msgnum', t, dict, dict', i', mes, hash', t', net'
+                    OVER    // mas', net', msgnum', t, dict, dict', i', mes, hash', t', net', t'
+                    GREATER // mas', net', msgnum', t, dict, dict', i', mes, hash', t', ?
+                    IF:<{   // mas', net', msgnum', t, dict, dict', i', mes, hash', t'
+                        s0 s8 XCHG  
+                            // mas', t', msgnum', t, dict, dict', i', mes, hash', net'
+                    }>
+                    DROP    // mas', net", msgnum', t, dict, dict', i', mes, hash'
+                    6 ROLL  // mas', net", t, dict, dict', i', mes, hash', msgnum'
+                    INC     // mas', net", t, dict, dict', i', mes, hash', msgnum' + 1
+                    6 -ROLL // mas', net", msgnum", t, dict, dict', i', mes, hash'
+                    SWAP    // mas', net", msgnum", t, dict, dict', i', hash', mes
+                    OVER    // mas', net", msgnum", t, dict, dict', i', hash', mes, hash'
+                    4 ROLL  // mas', net", msgnum", t, dict, i', hash', mes, hash', dict'
+                    256 INT // mas', net", msgnum", t, dict, i', hash', mes, hash', dict', 256
+                    DICTUSET
+                            // mas', net", msgnum", t, dict, i', hash', dict"
+                    -ROT    // mas', net", msgnum", t, dict, dict", i', hash'
+                    SWAP    // mas', net", msgnum", t, dict, dict", hash', i'
+                }>
+            }>ELSE<{        // mas', net', msgnum', t, dict, dict', i'
+                ZERO        // mas', net', msgnum', t, dict, dict', i', 0
+            }>
+            DUP ISZERO
+        }>UNTIL
+                            // mas', net", msgnum", t, dict, dict", hash', 0
+        2DROP               // mas', net", msgnum", t, dict, dict"
+        SWAP DROP           // mas', net", msgnum", t, dict"
+        SWAP DROP           // mas', net", msgnum", dict"
+        DUP DICTEMPTY       // mas', net", msgnum", dict", ?
+        IF:<{ 
+            DROP            // mas', net", msgnum"
+            NEWC            // mas', net", msgnum", b
+        }>ELSE<{
+            NEWC            // mas', net", msgnum", dict", b
+            STREF           // mas', net", msgnum", b'
+        }>
+        32 STU              // mas', net", b"
+        32 STI              // mas', b"'
+        SWAP                // b"', mas'
+        32 LDU SWAP DROP    // b"', mas"
+        32 LDI SWAP DROP    // b"', mas"'
+        SWAP                // mas"', b"'
+        STSLICE             // b""
+        ENDC                // ma'
+    }>ELSE<{                // ma, t, msgnum
+        2DROP               // ma
+    }>
+} : DMSGXT 
+
+
+
 {
     -ROT                        // s, ma, h
     OVER SWAP                   // s, ma, ma, h
