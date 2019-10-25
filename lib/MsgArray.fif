@@ -1804,6 +1804,45 @@
     MSG&
 } : MSGU
 
+// update signature mask for message envelop for given hash 
+// ( msgarray, hash, s -- msgarray') 
+{
+    s2 PUSH                     // ma, h, s, ma
+    s2 PUSH                     // ma, h, s, ma, h
+    DMSG?                       // ma, h, s, me, ?
+    ISZERO
+    64 THROWIF
+                                // ma, h, s, me
+    CTOS                        // ma, h, s, mes
+    32 LDI                      // ma, h, s, t, mes'
+    @' keynumber LDU            // ma, h, s, t, s', mes"
+    LDREF                       // ma, h, s, t, s', msg, mes"'
+    ENDS                        // ma, h, s, t, s', msg
+    NEWC                        // ma, h, s, t, s', msg, b
+    STREF                       // ma, h, s, t, s', b'
+    s1 s2 XCHG                  // ma, h, s, s', t, b'
+    32 STI                      // ma, h, s, s', b"
+    s1 s2 XCHG                  // ma, h, s', s, b"
+    @' keynumber STU            // ma, h, s' b"'
+    SWAP DROP                   // ma, h, b"'
+    ENDC                        // ma, h, new-me
+    CTOS                        // ma, h, new-mes
+    ROT                         // h, new-mes, ma
+    CTOS                        // h, new-mes, mas
+    LDREF                       // h, new-mes, dict, mas'
+    3 -ROLL                     // mas', h, new-mes, dict
+    s1 s2 XCHG                  // mas', new-mes, h, dict
+    256 INT                     // mas', new-mes, h, dict, 256
+    DICTUREPLACE                // mas', dict', ?
+    ISZERO
+    65 THROWIF
+                                // mas', dict'
+    NEWC                        // mas', dict', b
+    STREF                       // mas', b'
+    STSLICE                     // b"
+    ENDC                        // ma'  
+} : DMSGU
+
 
 { CTOS PLDREF } : MSG@
 
