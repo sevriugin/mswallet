@@ -1129,9 +1129,6 @@
     ENDC            // ma'
 } : DMSG&
 
-
-
-
 { 
     ZERO                        // ma, h, 0 :=flag
     -ROT                        // 0, ma, h
@@ -1183,6 +1180,26 @@
         IF:<{ SWAP DROP -1 INT }>ELSE<{ 2DROP ZERO }>
     }>ELSE<{ 2DROP DROP ZERO }>
 } : MSG?
+
+
+{
+    SWAP CTOS REF@?+            // hash, dict, mas', ?
+    IF:<{                       // hash, dict, mas'
+        SWAP                    // hash, mas', dict
+        ROT                     // mas', dict, hash
+        SWAP                    // mas', hash, dict
+        256 INT                 // mas', hash, dict, 256
+        DICTUGET                // mas', mes, ?
+        IF:<{                   // mas', mes
+            NEWC STSLICE ENDC   // mas', me
+            SWAP DROP -1 INT    // me, -1
+        }>ELSE<{                // mas'
+            DROP ZERO           // 0
+        }>
+    }>ELSE<{                    // hash, mas',
+        2DROP ZERO              // 0
+    }>
+} : DMSG?
 
 { 
     ZERO                        // ma, h, 0 :=flag
