@@ -1398,6 +1398,57 @@
     }>ELSE<{ 2DROP 2DROP DROP }>
 } : MSGX
 
+{                           // ma, h
+    OVER                    // ma, h, ma
+    CTOS 32 PLDU            // ma, h, msgnum
+    ISPOS
+    IF:<{                   // ma, h
+        SWAP                // h, ma
+        CTOS LDREF          // h, dict, mas'
+        SWAP                // h, mas', dict   
+        s1 s2 XCHG          // mas', h, dict
+        256 INT             // mas', h, dict, 256
+        DICTUDEL            // mas', dict', ?
+        IF:<{
+            NEWC            // mas', dict', b
+            ROT             // dict', b, mas'
+            32 LDU          // dict', b, msgnum, mas"
+            SWAP            // dict', b, mas", msgnum
+            DEC             // dict', b, mas", msgnum'
+            DUP ISZERO
+            IF:<{           // dict', b, mas", 0
+                DROP        // dict', b, mas"
+                -ROT        // mas", dict', b
+                SWAP DROP   // mas", b
+                ZERO SWAP   // mas", 0, b
+                32 STU      // mas", b'
+                SWAP        // b', mas"
+                32 LDI      // b', net, mas"'
+                SWAP DROP   // b', mas"'
+                SWAP        // mas"', b'
+                2147483647 INT SWAP 
+                32 STI      // mas"', b"
+                STSLICE     // b"'
+                ENDC        // ma'
+            }>ELSE<{        // dict', b, mas", msgnum'
+                ROT         // dict', mas", msgnum', b
+                32 STU      // dict', mas", b'
+                STSLICE     // dict', b"
+                STREF       // b"'
+                ENDC        // ma'
+            }>
+        }>ELSE<{            // mas', dict
+            NEWC            // mas', dict, b
+            STREF           // mas', b'
+            STSLICE         // b"
+            ENDC            // ma
+        }>
+    }>ELSE<{
+        DROP                // ma
+    }>
+} : DMSGX
+
+
 { 
     ZERO                        // ma, t, 0 :=f
     s2 PUSH                     // ma, t, 0, ma
