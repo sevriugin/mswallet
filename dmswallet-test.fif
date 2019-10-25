@@ -71,11 +71,11 @@ constant sigarray
 int-message-cell sigarray <b b{1000100} s, wallet_addr addr, 0 Gram, b{00} s, swap ref, swap <s s, b>
 constant external-message
 
-10 3 msg[] constant msgarray 
+10 3 dmsg[] constant msgdict 
 
 // ! TEST START
 1570607123 -10 + constant now-time 
-external-message keydict dkey[]>dict msgarray 10 3
+external-message keydict dkey[]>dict msgdict 10 3
 // ( emsg, ka, ma, n, k --
 <{                      
     // TEST: start prep. 

@@ -212,7 +212,7 @@
     // c4 PUSHCTR 
 } : MSWALLET
 
-
+// Dictionary version of the wallet 
 {
     SETCP0 DUP IFNOTRET         // return if recv_internal
     DUP 85143 INT EQUAL 
@@ -255,7 +255,7 @@
                                 // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray
         OVER                    // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, msgarray
         s9 PUSH                 // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, msgarray, hash
-        MSG?                    // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em, ?
+        DMSG?                   // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em, ?
         33 THROWIFNOT
                                 // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em
         CTOS 256 LDU SWAP DROP  // sa, hash, msg_seqno, valid_until, msg-s""', stored_seqno, k, n, msgarray, keyarray, em'
@@ -295,7 +295,7 @@
             c4 PUSHCTR          // hash, valid_until, stored_seqno, isc
             CTOS LDREF          // hash, valid_until, stored_seqno, msgarray, iss'
             s0 s4 XCHG          // iss', valid_until, stored_seqno, msgarray, hash
-            MSGX                // iss', valid_until, stored_seqno, msgarray'
+            DMSGX               // iss', valid_until, stored_seqno, msgarray'
             NEWC                // iss', valid_until, stored_seqno, msgarray', b
             STREF               // iss', valid_until, stored_seqno, b'
             SWAP INC SWAP       // iss', valid_until, stored_seqno', b'
@@ -337,14 +337,14 @@
                                 // MSGU: ( msgarray, hash, s -- msgarray')
             SWAP                // hash, msg_seqno, stored_seqno, k, n, msgarray, msk'
             6 ROLL SWAP         // msg_seqno, stored_seqno, k, n, msgarray, hash, msk'        
-            MSGU                // msg_seqno, stored_seqno, k, n, msgarray'
+            DMSGU               // msg_seqno, stored_seqno, k, n, msgarray'
 
         }>ELSE<{                // hash, msg_seqno, valid_until, stored_seqno, k, n, msgarray, msk', im-c
                                 // MSG&: ( msgarray, msg, t, s -- msgarray' )
             6 ROLL              // hash, msg_seqno, stored_seqno, k, n, msgarray, msk', im-c, valid_until
             ROT                 // hash, msg_seqno, stored_seqno, k, n, msgarray, im-c, valid_until, msk'
                                 // ...                          MSG&: ( msgarray, msg,  t,           s -- msgarray' )
-            MSG&                // hash, msg_seqno, stored_seqno, k, n, msgarray'
+            DMSG&               // hash, msg_seqno, stored_seqno, k, n, msgarray'
             5 ROLL DROP         // msg_seqno, stored_seqno, k, n, msgarray'
         }>
                                 // msg_seqno, stored_seqno, k, n, msgarray'
@@ -378,7 +378,7 @@
         IF:<{                   // iss', msgarray, msg_number
             DROP                // iss', msgarray
             NOW                 // iss', msgarray, now
-            MSGXT               // iss', msgarray'
+            DMSGXT              // iss', msgarray'
             NEWC                // iss', msgarray', b
             STREF               // iss', b'
             STSLICE             // b"
@@ -389,7 +389,7 @@
             GREATER             // iss', msgarray, ?
             IF:<{               // iss', msgarray
                 NOW             // iss', msgarray, now
-                MSGXT           // iss', msgarray'
+                DMSGXT          // iss', msgarray'
                 NEWC            // iss', msgarray', b
                 STREF           // iss', b'
                 STSLICE         // b"
